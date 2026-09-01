@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>PnPScan — Card Color &amp; Rotation Aligner</title>
+<link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+<header class="app-header">
+  <h1>PnPScan Card Aligner</h1>
+  <p class="subtitle">Batch color &amp; rotation alignment for scanned/photographed cards — runs entirely in your browser, nothing is uploaded.</p>
+</header>
+
+<div class="app-layout">
+  <aside class="sidebar">
+
+    <section class="panel">
+      <h2>1. Load Cards</h2>
+      <div id="dropzone" class="dropzone">
+        <p>Drag &amp; drop card images here, or</p>
+        <label class="btn file-btn">
+          Choose Files
+          <input type="file" id="fileInput" accept="image/*" multiple hidden />
+        </label>
+      </div>
+      <p class="hint">Click a thumbnail to preview it. Click the ★ on a thumbnail to make it the <strong>reference</strong> card (its color and level rotation are the target for all others).</p>
+    </section>
+
+    <section class="panel">
+      <h2>2. Color Alignment</h2>
+      <button id="autoColorBtn" class="btn primary" disabled>Auto Color Align to Reference</button>
+      <div class="field-row">
+        <label><input type="checkbox" id="colorEnabled" checked disabled /> Apply color edits</label>
+      </div>
+      <div class="field-row">
+        <label><input type="checkbox" id="autoColorEnabled" checked disabled /> Include auto alignment</label>
+      </div>
+      <h3>Manual batch adjustment</h3>
+      <div class="slider-field">
+        <label for="brightness">Brightness</label>
+        <input type="range" id="brightness" min="-100" max="100" value="0" />
+        <output id="brightnessOut">0</output>
+      </div>
+      <div class="slider-field">
+        <label for="contrast">Contrast</label>
+        <input type="range" id="contrast" min="-100" max="100" value="0" />
+        <output id="contrastOut">0</output>
+      </div>
+      <div class="slider-field">
+        <label for="saturation">Saturation</label>
+        <input type="range" id="saturation" min="-100" max="100" value="0" />
+        <output id="saturationOut">0</output>
+      </div>
+      <div class="slider-field">
+        <label for="rGain">Red gain</label>
+        <input type="range" id="rGain" min="0.5" max="1.5" step="0.01" value="1" />
+        <output id="rGainOut">1.00</output>
+      </div>
+      <div class="slider-field">
+        <label for="gGain">Green gain</label>
+        <input type="range" id="gGain" min="0.5" max="1.5" step="0.01" value="1" />
+        <output id="gGainOut">1.00</output>
+      </div>
+      <div class="slider-field">
+        <label for="bGain">Blue gain</label>
+        <input type="range" id="bGain" min="0.5" max="1.5" step="0.01" value="1" />
+        <output id="bGainOut">1.00</output>
+      </div>
+      <button id="resetColorBtn" class="btn small">Reset Manual Color</button>
+    </section>
+
+    <section class="panel">
+      <h2>3. Rotation Alignment</h2>
+      <button id="autoRotateBtn" class="btn primary" disabled>Auto Detect &amp; Level Rotation</button>
+      <div class="field-row">
+        <label><input type="checkbox" id="rotationEnabled" checked disabled /> Apply rotation edits</label>
+      </div>
+      <div class="field-row">
+        <label><input type="checkbox" id="autoAngleEnabled" checked disabled /> Include auto leveling</label>
+      </div>
+      <div class="slider-field">
+        <label for="manualRotation">Batch rotation offset (°)</label>
+        <input type="range" id="manualRotation" min="-10" max="10" step="0.1" value="0" />
+        <output id="manualRotationOut">0.0</output>
+      </div>
+      <div class="field-row">
+        <label for="perCardRotation">Fine-tune selected card (°)</label>
+        <input type="number" id="perCardRotation" step="0.1" value="0" style="width:5em" />
+      </div>
+      <button id="resetRotationBtn" class="btn small">Reset Manual Rotation</button>
+    </section>
+
+    <section class="panel">
+      <h2>4. Crop (stabilization trim)</h2>
+      <p class="hint">Rotating leaves ragged/empty edges. These pixel amounts are trimmed from each side of every card equally. Auto-suggested from the worst-case rotation angle; edit freely.</p>
+      <button id="suggestCropBtn" class="btn">Auto-Suggest Crop</button>
+      <div class="crop-grid">
+        <div></div>
+        <div class="crop-field"><label for="cropTop">Top</label><input type="number" id="cropTop" min="0" value="0" /></div>
+        <div></div>
+        <div class="crop-field"><label for="cropLeft">Left</label><input type="number" id="cropLeft" min="0" value="0" /></div>
+        <div class="crop-field"><label><input type="checkbox" id="showCropGuide" checked /> guide</label></div>
+        <div class="crop-field"><label for="cropRight">Right</label><input type="number" id="cropRight" min="0" value="0" /></div>
+        <div></div>
+        <div class="crop-field"><label for="cropBottom">Bottom</label><input type="number" id="cropBottom" min="0" value="0" /></div>
+        <div></div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>5. Export</h2>
+      <div class="field-row">
+        <label for="exportFormat">Format</label>
+        <select id="exportFormat">
+          <option value="image/png">PNG</option>
+          <option value="image/jpeg">JPEG</option>
+        </select>
+      </div>
+      <button id="downloadOneBtn" class="btn" disabled>Download Selected Card</button>
+      <button id="downloadAllBtn" class="btn primary" disabled>Download All Cards</button>
+      <p class="hint" id="exportStatus"></p>
+    </section>
+
+  </aside>
+
+  <main class="main-area">
+    <section class="gallery-section">
+      <h2>Cards <span id="cardCount" class="muted"></span></h2>
+      <div id="gallery" class="gallery"></div>
+    </section>
+
+    <section class="preview-section">
+      <h2>Preview: <span id="previewName" class="muted">— select a card —</span></h2>
+      <div class="preview-row">
+        <div class="preview-col">
+          <h3>Before</h3>
+          <canvas id="beforeCanvas"></canvas>
+        </div>
+        <div class="preview-col">
+          <h3>After</h3>
+          <canvas id="afterCanvas"></canvas>
+        </div>
+      </div>
+      <div class="preview-row" id="guideRow">
+        <div class="preview-col wide">
+          <h3>Rotation &amp; Crop Guide <span class="muted">(red = pixels removed)</span></h3>
+          <canvas id="guideCanvas"></canvas>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script src="js/geometry.js"></script>
+<script src="js/analyze.js"></script>
+<script src="js/color.js"></script>
+<script src="js/render.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
