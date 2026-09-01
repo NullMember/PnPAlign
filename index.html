@@ -79,6 +79,10 @@
       <div class="field-row">
         <label><input type="checkbox" id="autoAngleEnabled" checked disabled /> Include auto leveling</label>
       </div>
+      <div class="field-row">
+        <label><input type="checkbox" id="autoScaleEnabled" checked disabled /> Include auto scale match</label>
+      </div>
+      <p class="hint">Auto scale resizes each card so its printed content matches the reference's physical size — corrects scans taken at a slightly different zoom/DPI.</p>
       <div class="slider-field">
         <label for="manualRotation">Batch rotation offset (°)</label>
         <input type="range" id="manualRotation" min="-10" max="10" step="0.1" value="0" />
@@ -126,14 +130,13 @@
   </aside>
 
   <main class="main-area">
-    <section class="gallery-section">
-      <h2>Cards <span id="cardCount" class="muted"></span></h2>
-      <div id="gallery" class="gallery"></div>
-    </section>
-
     <section class="preview-section">
       <h2>Preview: <span id="previewName" class="muted">— select a card —</span></h2>
       <div class="preview-row">
+        <div class="preview-col">
+          <h3>Reference <span class="muted">(target)</span></h3>
+          <canvas id="referenceCanvas"></canvas>
+        </div>
         <div class="preview-col">
           <h3>Before</h3>
           <canvas id="beforeCanvas"></canvas>
@@ -151,6 +154,11 @@
       </div>
     </section>
   </main>
+
+  <aside class="gallery-sidebar">
+    <h2>Cards <span id="cardCount" class="muted"></span></h2>
+    <div id="gallery" class="gallery"></div>
+  </aside>
 </div>
 
 <script src="js/geometry.js"></script>

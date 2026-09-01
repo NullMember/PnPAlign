@@ -1,8 +1,39 @@
 // Card analysis: foreground/background separation, skew angle detection,
-// and color statistics — all derived from one downscaled render of the card.
+// physical card size (for scale matching), and color white-point —
+// all derived from one downscaled render of the card.
 
 const Analyze = (() => {
-  const ANALYZE_MAX_DIM = 500; // downscale target for analysis (speed; angle/stats are scale-invariant)
+  const ANALYZE_MAX_DIM = 500; // downscale target for analysis (speed; angle/size/color are scale-invariant)
+  const PAPER_SATURATION_PERCENTILE = 0.35; // fraction of least-saturated pixels treated as the card's own paper/background tone
+
+  // Mean RGB of the least-saturated pixels within [xMin,xMax)x[yMin,yMax) of `data` (w wide).
+  // Paper/background tone is near-neutral (low saturation); printed icons/artwork are the
+  // saturated colors we want to exclude. Picking by saturation rather than brightness or an
+  // overall mean keeps this stable regardless of how much colored content a given card has.
+  function estimatePaperColor(data, w, xMin, xMax, yMin, yMax) {
+    const idx = [];
+    const sat = [];
+    for (let y = yMin; y < yMax; y++) {
+      const rowOff = y * w;
+      for (let x = xMin; x < xMax; x++) {
+        const o = (rowOff + x) * 4;
+        const r = data[o], g = data[o + 1], b = data[o + 2];
+        const max = Math.max(r, g, b), min = Math.min(r, g, b);
+        idx.push(o);
+        sat.push(max > 0 ? (max - min) / max : 0);
+      }
+    }
+    if (idx.length === 0) return [255, 255, 255];
+    const order = idx.map((_, i) => i).sort((a, b) => sat[a] - sat[b]);
+    const take = Math.max(20, Math.round(order.length * PAPER_SATURATION_PERCENTILE));
+    const count = Math.min(take, order.length);
+    let rs = 0, gs = 0, bs = 0;
+    for (let k = 0; k < count; k++) {
+      const o = idx[order[k]];
+      rs += data[o]; gs += data[o + 1]; bs += data[o + 2];
+    }
+    return [rs / count, gs / count, bs / count];
+  }
 
   function drawDownscaled(img, maxDim) {
     const scale = Math.min(1, maxDim / Math.max(img.naturalWidth || img.width, img.naturalHeight || img.height));
@@ -37,9 +68,13 @@ const Analyze = (() => {
     return threshold;
   }
 
-  // Analyzes one card image: returns { angle (deg, correction to apply), colorStats {mean:[r,g,b], std:[r,g,b]}, maskCoverage }
+  // Analyzes one card image. Returns:
+  //   angle           — degrees to rotate the image to level the card
+  //   cardSize        — {long, short} detected printed-card extent in FULL-RESOLUTION pixels (for scale matching)
+  //   colorStats      — { paper:[r,g,b] } — the card's own background/paper tone, used as a white-balance anchor
+  //   maskCoverage, maskReliable
   function analyzeCard(img) {
-    const { ctx, w, h } = drawDownscaled(img, ANALYZE_MAX_DIM);
+    const { ctx, w, h, scale } = drawDownscaled(img, ANALYZE_MAX_DIM);
     const data = ctx.getImageData(0, 0, w, h).data;
     const n = w * h;
     const gray = new Uint8ClampedArray(n);
@@ -97,43 +132,65 @@ const Analyze = (() => {
       }
     }
 
-    let angle = 0;
-    let maskCoverage = 0;
     let fgCount = 0;
     for (let i = 0; i < n; i++) if (isFg(gray[i])) fgCount++;
-    maskCoverage = fgCount / n;
+    const maskCoverage = fgCount / n;
+    const useMask = maskCoverage > 0.02 && maskCoverage < 0.98;
 
-    if (points.length >= 3 && maskCoverage > 0.02 && maskCoverage < 0.98) {
+    let angle = 0;
+    let cardSize = null;
+    // Bounding box of the detected foreground silhouette. The threshold/border test above
+    // separates the card's printed content (icons, text) from whatever is brighter/darker
+    // around it — on many cards that's the surrounding scan background, but if the card's
+    // own paper is similar in tone to that background, it ends up tracing just the darker
+    // printed content instead. Either way this box sits safely *inside* the true card, so
+    // it's used below as a safe region to sample paper color from without risking picking
+    // up the actual surrounding background.
+    let box = null;
+    if (points.length >= 3 && useMask) {
+      let minX = w, maxX = 0, minY = h, maxY = 0;
+      for (const p of points) {
+        if (p.x < minX) minX = p.x;
+        if (p.x > maxX) maxX = p.x;
+        if (p.y < minY) minY = p.y;
+        if (p.y > maxY) maxY = p.y;
+      }
+      box = { minX, maxX, minY, maxY };
+
       const rect = Geometry.minAreaRect(points);
       const rectAngleDeg = (rect.angle * 180) / Math.PI;
       const normalized = Geometry.normalizeAngleDeg(rectAngleDeg);
       angle = -normalized; // rotate image by this much to level the card
+      // Full-resolution physical size of the detected card rectangle, ordered so
+      // comparisons between cards don't depend on which hull edge was picked as "width".
+      const long = Math.max(rect.width, rect.height) / scale;
+      const short = Math.min(rect.width, rect.height) / scale;
+      if (long > 0 && short > 0) cardSize = { long, short };
     }
 
-    // Color stats over the foreground mask only (falls back to whole image if mask is degenerate).
-    const useMask = maskCoverage > 0.02 && maskCoverage < 0.98;
-    let rs = 0, gs = 0, bs = 0, cnt = 0;
-    for (let i = 0; i < n; i++) {
-      if (useMask && !isFg(gray[i])) continue;
-      const o = i * 4;
-      rs += data[o]; gs += data[o + 1]; bs += data[o + 2];
-      cnt++;
+    // Color white point: mean of the least-saturated pixels within the safe interior box
+    // (or the whole image if no reliable box was found) — see estimatePaperColor above.
+    // The box is inset a further 15% on each side: it's an axis-aligned box around a
+    // (possibly rotated) card, so its corners can dip outside the actual printed content
+    // when the card is skewed, picking up near-neutral background there that would
+    // otherwise contaminate the paper-color estimate.
+    let paper;
+    if (box) {
+      const bw = box.maxX - box.minX, bh = box.maxY - box.minY;
+      const insetX = Math.round(bw * 0.15), insetY = Math.round(bh * 0.15);
+      paper = estimatePaperColor(
+        data, w,
+        box.minX + insetX, box.maxX + 1 - insetX,
+        box.minY + insetY, box.maxY + 1 - insetY
+      );
+    } else {
+      paper = estimatePaperColor(data, w, 0, w, 0, h);
     }
-    if (cnt === 0) cnt = 1;
-    const mean = [rs / cnt, gs / cnt, bs / cnt];
-    let rv = 0, gv = 0, bv = 0;
-    for (let i = 0; i < n; i++) {
-      if (useMask && !isFg(gray[i])) continue;
-      const o = i * 4;
-      rv += (data[o] - mean[0]) ** 2;
-      gv += (data[o + 1] - mean[1]) ** 2;
-      bv += (data[o + 2] - mean[2]) ** 2;
-    }
-    const std = [Math.sqrt(rv / cnt), Math.sqrt(gv / cnt), Math.sqrt(bv / cnt)];
 
     return {
       angle,
-      colorStats: { mean, std },
+      cardSize,
+      colorStats: { paper },
       maskCoverage,
       maskReliable: useMask,
     };
