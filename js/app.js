@@ -14,14 +14,16 @@
     manualRotationDeg: 0,
     perCardRotationDeg: {},
 
+    autoScaleEnabled: true,
+
     crop: { top: 0, right: 0, bottom: 0, left: 0 },
-    cropRefDim: null, // {w,h} of the card the crop values were computed against
   };
 
   const el = (id) => document.getElementById(id);
   const gallery = el('gallery');
   const cardCountEl = el('cardCount');
   const previewNameEl = el('previewName');
+  const referenceCanvas = el('referenceCanvas');
   const beforeCanvas = el('beforeCanvas');
   const afterCanvas = el('afterCanvas');
   const guideCanvas = el('guideCanvas');
@@ -42,12 +44,46 @@
     if (card.analyzed) return;
     const result = Analyze.analyzeCard(card.img);
     card.autoAngle = result.angle;
+    card.cardSize = result.cardSize;
     card.colorStats = result.colorStats;
     card.maskReliable = result.maskReliable;
     card.analyzed = true;
   }
 
-  function currentOptions(cropRefOverride) {
+  // Scale each card so its printed content matches the reference's physical size —
+  // otherwise cards scanned at a slightly different zoom/DPI stay a different size
+  // than everyone else even after rotation and crop line their edges up.
+  function computeAutoScales() {
+    const ref = getReference();
+    if (!ref || !ref.cardSize) {
+      state.cards.forEach((c) => (c.autoScale = 1));
+      return;
+    }
+    state.cards.forEach((card) => {
+      if (card.id === ref.id || !card.cardSize) {
+        card.autoScale = 1;
+        return;
+      }
+      const scaleLong = ref.cardSize.long / card.cardSize.long;
+      const scaleShort = ref.cardSize.short / card.cardSize.short;
+      card.autoScale = Math.max(0.8, Math.min(1.25, (scaleLong + scaleShort) / 2));
+    });
+  }
+
+  // The reference's own raw dimensions minus the edited crop amounts — this is the fixed
+  // output size every card gets center-cropped to, so all exports end up the same size.
+  function currentCropTargetSize() {
+    const ref = getReference() || state.cards[0];
+    if (!ref) return null;
+    const rw = ref.img.naturalWidth || ref.img.width;
+    const rh = ref.img.naturalHeight || ref.img.height;
+    return {
+      w: Math.max(1, rw - state.crop.left - state.crop.right),
+      h: Math.max(1, rh - state.crop.top - state.crop.bottom),
+    };
+  }
+
+  function currentOptions() {
     return {
       colorEnabled: state.colorEnabled,
       autoColorEnabled: state.autoColorEnabled,
@@ -56,8 +92,8 @@
       autoAngleEnabled: state.autoAngleEnabled,
       manualRotationDeg: state.manualRotationDeg,
       perCardRotationDeg: state.perCardRotationDeg,
-      crop: state.crop,
-      cropRefDim: cropRefOverride || state.cropRefDim,
+      autoScaleEnabled: state.autoScaleEnabled,
+      cropTargetSize: currentCropTargetSize(),
     };
   }
 
@@ -126,7 +162,11 @@
         state.referenceId = card.id;
         renderGallery();
         recomputeAutoColorIfNeeded();
-        updatePreview();
+        if (state.rotationEnabled && state.autoScaleEnabled) {
+          state.cards.forEach((c) => ensureAnalyzed(c));
+          computeAutoScales();
+        }
+        refreshAll();
       });
 
       const remove = document.createElement('div');
@@ -256,10 +296,14 @@
     state.cards.forEach((card) => ensureAnalyzed(card));
     state.rotationEnabled = true;
     state.autoAngleEnabled = true;
+    state.autoScaleEnabled = true;
     el('rotationEnabled').checked = true;
     el('rotationEnabled').disabled = false;
     el('autoAngleEnabled').checked = true;
     el('autoAngleEnabled').disabled = false;
+    el('autoScaleEnabled').checked = true;
+    el('autoScaleEnabled').disabled = false;
+    computeAutoScales();
     autoSuggestCrop();
     refreshAll();
   });
@@ -270,6 +314,10 @@
   });
   el('autoAngleEnabled').addEventListener('change', (e) => {
     state.autoAngleEnabled = e.target.checked;
+    refreshAll();
+  });
+  el('autoScaleEnabled').addEventListener('change', (e) => {
+    state.autoScaleEnabled = e.target.checked;
     refreshAll();
   });
 
@@ -320,7 +368,6 @@
     const maxAngle = currentMaxAbsAngle();
     const crop = Render.suggestedCrop(w, h, maxAngle);
     state.crop = crop;
-    state.cropRefDim = { w, h };
     el('cropTop').value = crop.top;
     el('cropBottom').value = crop.bottom;
     el('cropLeft').value = crop.left;
@@ -340,10 +387,6 @@
         left: parseInt(el('cropLeft').value, 10) || 0,
         right: parseInt(el('cropRight').value, 10) || 0,
       };
-      if (!state.cropRefDim) {
-        const ref = getReference() || state.cards[0];
-        if (ref) state.cropRefDim = { w: ref.img.naturalWidth || ref.img.width, h: ref.img.naturalHeight || ref.img.height };
-      }
       updatePreview();
     });
     el(id).addEventListener('change', () => refreshThumbnails());
@@ -368,7 +411,28 @@
     dest.getContext('2d').drawImage(src, 0, 0);
   }
 
+  // Mirrors Render.renderCard's internal scale math, needed here only to place the
+  // crop-guide overlay rectangle at the right size on the uncropped preview canvas.
+  function previewScaleFor(card, options, maxDim) {
+    const naturalW = card.img.naturalWidth || card.img.width;
+    const naturalH = card.img.naturalHeight || card.img.height;
+    const cardScale = options.autoScaleEnabled && card.autoScale ? card.autoScale : 1;
+    const targetW = naturalW * cardScale;
+    const targetH = naturalH * cardScale;
+    return maxDim ? Math.min(1, maxDim / Math.max(targetW, targetH)) : 1;
+  }
+
   function updatePreview() {
+    const ref = getReference();
+    if (ref) {
+      ensureAnalyzed(ref);
+      const refCanvas = Render.renderCard(ref, currentOptions(), PREVIEW_MAX_DIM);
+      copyCanvas(referenceCanvas, refCanvas);
+    } else {
+      referenceCanvas.width = 0;
+      referenceCanvas.height = 0;
+    }
+
     const card = getSelected();
     if (!card) {
       previewNameEl.textContent = '— select a card —';
@@ -383,10 +447,6 @@
 
     drawImageToCanvas(beforeCanvas, card.img, PREVIEW_MAX_DIM);
 
-    if (card.id === state.referenceId && state.colorEnabled && state.autoColorEnabled) {
-      // reference should already match itself; still show its own manual/rotation edits
-    }
-
     const finalCanvas = Render.renderCard(card, currentOptions(), PREVIEW_MAX_DIM);
     copyCanvas(afterCanvas, finalCanvas);
 
@@ -394,28 +454,21 @@
     const showGuide = state.rotationEnabled && el('showCropGuide').checked;
     guideRow.style.display = showGuide ? '' : 'none';
     if (showGuide) {
-      const naturalW = card.img.naturalWidth || card.img.width;
-      const naturalH = card.img.naturalHeight || card.img.height;
-      const uncroppedOptions = currentOptions();
-      uncroppedOptions.crop = { top: 0, right: 0, bottom: 0, left: 0 };
+      const options = currentOptions();
+      const uncroppedOptions = { ...options, cropTargetSize: null };
       const uncropped = Render.renderCard(card, uncroppedOptions, PREVIEW_MAX_DIM);
       copyCanvas(guideCanvas, uncropped);
       const gctx = guideCanvas.getContext('2d');
-      let crop = state.crop;
-      if (state.cropRefDim) {
-        const sx = uncropped.width / state.cropRefDim.w;
-        const sy = uncropped.height / state.cropRefDim.h;
-        crop = {
-          top: crop.top * sy,
-          bottom: crop.bottom * sy,
-          left: crop.left * sx,
-          right: crop.right * sx,
-        };
-      }
+      const previewScale = previewScaleFor(card, options, PREVIEW_MAX_DIM);
+      const targetSize = options.cropTargetSize;
+      const targetW = targetSize ? Math.min(uncropped.width, Math.round(targetSize.w * previewScale)) : uncropped.width;
+      const targetH = targetSize ? Math.min(uncropped.height, Math.round(targetSize.h * previewScale)) : uncropped.height;
+      const left = Math.round((uncropped.width - targetW) / 2);
+      const top = Math.round((uncropped.height - targetH) / 2);
       gctx.strokeStyle = '#dc2626';
       gctx.lineWidth = 2;
       gctx.setLineDash([6, 4]);
-      gctx.strokeRect(crop.left, crop.top, uncropped.width - crop.left - crop.right, uncropped.height - crop.top - crop.bottom);
+      gctx.strokeRect(left, top, targetW, targetH);
     }
   }
 

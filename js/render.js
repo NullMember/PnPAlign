@@ -11,17 +11,25 @@ const Render = (() => {
   }
 
   // Renders one card at the given output max-dimension. Returns a canvas.
-  // card: { img, autoColorTransform, autoAngle }
-  // options: { colorEnabled, manualColor, rotationEnabled, autoAngleEnabled, manualRotationDeg, perCardRotationDeg, crop:{top,right,bottom,left}, cropIsForMaxDim (the width/height the crop values were computed against) }
+  // card: { img, autoColorTransform, autoAngle, autoScale }
+  // options: { colorEnabled, manualColor, rotationEnabled, autoAngleEnabled, manualRotationDeg, perCardRotationDeg,
+  //            autoScaleEnabled, cropTargetSize:{w,h} (final output size, in the reference card's full-resolution pixels) }
   function renderCard(card, options, maxDim) {
     const img = card.img;
     const naturalW = img.naturalWidth || img.width;
     const naturalH = img.naturalHeight || img.height;
-    const scale = maxDim ? Math.min(1, maxDim / Math.max(naturalW, naturalH)) : 1;
-    const w = Math.max(1, Math.round(naturalW * scale));
-    const h = Math.max(1, Math.round(naturalH * scale));
 
-    // Step 1: draw at working resolution
+    // cardScale resamples this card so its printed content is the same physical pixel
+    // size as the reference's — otherwise a card scanned at a slightly different zoom/DPI
+    // ends up a different size than everyone else even after rotation+crop line up their edges.
+    const cardScale = options.autoScaleEnabled && card.autoScale ? card.autoScale : 1;
+    const targetW = naturalW * cardScale;
+    const targetH = naturalH * cardScale;
+    const previewScale = maxDim ? Math.min(1, maxDim / Math.max(targetW, targetH)) : 1;
+    const w = Math.max(1, Math.round(targetW * previewScale));
+    const h = Math.max(1, Math.round(targetH * previewScale));
+
+    // Step 1: draw at working resolution (this also applies the scale correction)
     let canvas = document.createElement('canvas');
     canvas.width = w;
     canvas.height = h;
@@ -57,26 +65,25 @@ const Render = (() => {
       ctx = rctx;
     }
 
-    // Step 4: crop (crop values are defined against options.cropRefDim = {w,h}; scale to this render's resolution)
-    let crop = options.crop || { top: 0, right: 0, bottom: 0, left: 0 };
-    if (options.cropRefDim) {
-      const sx = w / options.cropRefDim.w;
-      const sy = h / options.cropRefDim.h;
-      crop = {
-        top: Math.round(crop.top * sy),
-        bottom: Math.round(crop.bottom * sy),
-        left: Math.round(crop.left * sx),
-        right: Math.round(crop.right * sx),
-      };
+    // Step 4: crop to a fixed output size, centered. Cropping to an explicit target size
+    // (rather than trimming the same pixel amount off each edge) keeps every card's final
+    // dimensions identical even when a card's own raw canvas size differs slightly from the
+    // reference's — which cardScale alone doesn't guarantee, since it only normalizes the
+    // printed content's size, not any background margin around it.
+    let cw = w, ch = h;
+    if (options.cropTargetSize) {
+      const targetW = Math.round(options.cropTargetSize.w * previewScale);
+      const targetH = Math.round(options.cropTargetSize.h * previewScale);
+      cw = Math.min(w, Math.max(1, targetW));
+      ch = Math.min(h, Math.max(1, targetH));
     }
-    const cw = Math.max(1, w - crop.left - crop.right);
-    const ch = Math.max(1, h - crop.top - crop.bottom);
-    if (crop.top || crop.bottom || crop.left || crop.right) {
+    if (cw !== w || ch !== h) {
+      const left = Math.round((w - cw) / 2);
+      const top = Math.round((h - ch) / 2);
       const cropped = document.createElement('canvas');
       cropped.width = cw;
       cropped.height = ch;
-      const cctx = cropped.getContext('2d');
-      cctx.drawImage(canvas, crop.left, crop.top, cw, ch, 0, 0, cw, ch);
+      cropped.getContext('2d').drawImage(canvas, left, top, cw, ch, 0, 0, cw, ch);
       canvas = cropped;
     }
 

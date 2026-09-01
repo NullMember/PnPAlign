@@ -1,16 +1,21 @@
 // Color transform: per-channel linear match to a reference (auto), plus manual batch adjustments.
 
 const ColorAlign = (() => {
+  // White-balance style correction: scale each channel so this card's own paper/background
+  // tone matches the reference's paper tone. Pure multiplicative (no offset) — matching means/stds
+  // over the whole card mixes in printed content (icons, numbers) whose color and proportion vary
+  // card-to-card for reasons that have nothing to do with lighting, which was skewing results badly
+  // on cards with a lot of colored artwork. Anchoring to the paper tone sidesteps that.
   function computeAutoTransform(sourceStats, refStats) {
     const gain = [0, 0, 0];
     const offset = [0, 0, 0];
     for (let c = 0; c < 3; c++) {
-      const srcStd = sourceStats.std[c];
-      const refStd = refStats.std[c];
-      let g = srcStd > 2 ? refStd / srcStd : 1;
-      g = Math.max(0.4, Math.min(2.5, g));
+      const srcPaper = sourceStats.paper[c];
+      const refPaper = refStats.paper[c];
+      let g = srcPaper > 5 ? refPaper / srcPaper : 1;
+      g = Math.max(0.5, Math.min(2.0, g));
       gain[c] = g;
-      offset[c] = refStats.mean[c] - g * sourceStats.mean[c];
+      offset[c] = 0;
     }
     return { gain, offset };
   }
