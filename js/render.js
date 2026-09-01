@@ -1,4 +1,4 @@
-// Full per-card render pipeline: color -> rotation -> crop, at any target resolution.
+// Full per-card render pipeline: color -> rotation -> position -> crop, at any target resolution.
 
 const Render = (() => {
   function suggestedCrop(width, height, angleDeg) {
@@ -11,9 +11,10 @@ const Render = (() => {
   }
 
   // Renders one card at the given output max-dimension. Returns a canvas.
-  // card: { img, autoColorTransform, autoAngle, autoScale }
+  // card: { img, autoColorTransform, autoAngle, autoScale, autoOffset }
   // options: { colorEnabled, manualColor, rotationEnabled, autoAngleEnabled, manualRotationDeg, perCardRotationDeg,
-  //            autoScaleEnabled, cropTargetSize:{w,h} (final output size, in the reference card's full-resolution pixels) }
+  //            autoScaleEnabled, autoPositionEnabled, crop:{top,right,bottom,left} (pixel amounts to trim,
+  //            in the reference card's full-resolution pixels, anchored at that exact offset on every card) }
   function renderCard(card, options, maxDim) {
     const img = card.img;
     const naturalW = img.naturalWidth || img.width;
@@ -65,21 +66,48 @@ const Render = (() => {
       ctx = rctx;
     }
 
-    // Step 4: crop to a fixed output size, centered. Cropping to an explicit target size
-    // (rather than trimming the same pixel amount off each edge) keeps every card's final
-    // dimensions identical even when a card's own raw canvas size differs slightly from the
-    // reference's — which cardScale alone doesn't guarantee, since it only normalizes the
-    // printed content's size, not any background margin around it.
-    let cw = w, ch = h;
-    if (options.cropTargetSize) {
-      const targetW = Math.round(options.cropTargetSize.w * previewScale);
-      const targetH = Math.round(options.cropTargetSize.h * previewScale);
-      cw = Math.min(w, Math.max(1, targetW));
-      ch = Math.min(h, Math.max(1, targetH));
+    // Step 4: position (translation) alignment. Rotation/scale line up the card's size and
+    // skew, but the printed content can still sit in a different spot within the frame from
+    // scan to scan; this shifts the card so its content lands where the reference's does, so
+    // the anchored crop below (step 5) removes the same content on every card.
+    if (options.autoPositionEnabled && card.autoOffset) {
+      const dx = Math.round(card.autoOffset.dx * previewScale);
+      const dy = Math.round(card.autoOffset.dy * previewScale);
+      if (dx !== 0 || dy !== 0) {
+        const shifted = document.createElement('canvas');
+        shifted.width = w;
+        shifted.height = h;
+        shifted.getContext('2d').drawImage(canvas, dx, dy);
+        canvas = shifted;
+      }
     }
-    if (cw !== w || ch !== h) {
-      const left = Math.round((w - cw) / 2);
-      const top = Math.round((h - ch) / 2);
+
+    // Step 5: crop, anchored at an explicit (left, top) offset rather than re-centered. Once
+    // position alignment (step 4) has already lined every card's content up with the
+    // reference's, the same absolute pixel amounts should come off the same edges on every
+    // card — a center-crop would instead remove equal amounts from opposite edges regardless
+    // of which edge position-alignment actually left a blank margin on, wasting real content
+    // to reach the same safety margin. Falls back to clamping (not re-centering) if a card's
+    // own working canvas is smaller than the crop window calls for — cardScale only
+    // normalizes the printed content's size, not any background margin around it, so a card
+    // that needed a lot of scale-down correction can still end up with less canvas to spare
+    // than the reference; that card's final size will be smaller than the rest as a result.
+    let cw = w, ch = h, left = 0, top = 0;
+    if (options.crop) {
+      const cropLeft = Math.round(options.crop.left * previewScale);
+      const cropTop = Math.round(options.crop.top * previewScale);
+      const cropRight = Math.round(options.crop.right * previewScale);
+      const cropBottom = Math.round(options.crop.bottom * previewScale);
+      left = cropLeft;
+      top = cropTop;
+      cw = Math.max(1, w - cropLeft - cropRight);
+      ch = Math.max(1, h - cropTop - cropBottom);
+      if (left + cw > w) left = Math.max(0, w - cw);
+      if (top + ch > h) top = Math.max(0, h - ch);
+      cw = Math.min(cw, w - left);
+      ch = Math.min(ch, h - top);
+    }
+    if (cw !== w || ch !== h || left !== 0 || top !== 0) {
       const cropped = document.createElement('canvas');
       cropped.width = cw;
       cropped.height = ch;

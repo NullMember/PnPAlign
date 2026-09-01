@@ -79,10 +79,6 @@
       <div class="field-row">
         <label><input type="checkbox" id="autoAngleEnabled" checked disabled /> Include auto leveling</label>
       </div>
-      <div class="field-row">
-        <label><input type="checkbox" id="autoScaleEnabled" checked disabled /> Include auto scale match</label>
-      </div>
-      <p class="hint">Auto scale resizes each card so its printed content matches the reference's physical size — corrects scans taken at a slightly different zoom/DPI.</p>
       <div class="slider-field">
         <label for="manualRotation">Batch rotation offset (°)</label>
         <input type="range" id="manualRotation" min="-10" max="10" step="0.1" value="0" />
@@ -96,8 +92,26 @@
     </section>
 
     <section class="panel">
-      <h2>4. Crop (stabilization trim)</h2>
-      <p class="hint">Rotating leaves ragged/empty edges. These pixel amounts are trimmed from each side of every card equally. Auto-suggested from the worst-case rotation angle; edit freely.</p>
+      <h2>4. Scale Alignment</h2>
+      <button id="autoScaleBtn" class="btn primary" disabled>Auto Detect &amp; Match Scale</button>
+      <div class="field-row">
+        <label><input type="checkbox" id="autoScaleEnabled" checked disabled /> Apply auto scale match</label>
+      </div>
+      <p class="hint">Resizes each card so its printed content matches the reference's physical size — corrects scans taken at a slightly different zoom/DPI. Independent of rotation/position; can run in any order.</p>
+    </section>
+
+    <section class="panel">
+      <h2>5. Position Alignment</h2>
+      <button id="autoPositionBtn" class="btn primary" disabled>Auto Detect &amp; Match Position</button>
+      <div class="field-row">
+        <label><input type="checkbox" id="autoPositionEnabled" checked disabled /> Apply auto position match</label>
+      </div>
+      <p class="hint">Shifts each card so its printed content lines up with the reference's, correcting for the card sitting in a slightly different spot in each scan frame. Most accurate after rotation and scale are detected first (it measures leftover drift on top of whatever's currently applied), but works standalone too.</p>
+    </section>
+
+    <section class="panel">
+      <h2>6. Crop (stabilization trim)</h2>
+      <p class="hint">Rotating leaves ragged/empty edges, and position alignment can leave a blank margin on whichever edge a card was shifted away from. These pixel amounts are trimmed from each side — auto-suggested per edge from the worst case across all cards (rotation angle + position shift); edit freely. Unlike earlier versions, the crop window is anchored at these exact offsets on every card (not re-centered), since position alignment already lines every card up to the same frame.</p>
       <button id="suggestCropBtn" class="btn">Auto-Suggest Crop</button>
       <div class="crop-grid">
         <div></div>
@@ -113,7 +127,7 @@
     </section>
 
     <section class="panel">
-      <h2>5. Export</h2>
+      <h2>7. Export</h2>
       <div class="field-row">
         <label for="exportFormat">Format</label>
         <select id="exportFormat">
@@ -164,6 +178,7 @@
 <script src="js/geometry.js"></script>
 <script src="js/zip.js"></script>
 <script src="js/analyze.js"></script>
+<script src="js/offset.js"></script>
 <script src="js/color.js"></script>
 <script src="js/render.js"></script>
 <script src="js/app.js"></script>

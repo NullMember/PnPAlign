@@ -15,6 +15,7 @@
     perCardRotationDeg: {},
 
     autoScaleEnabled: true,
+    autoPositionEnabled: true,
 
     crop: { top: 0, right: 0, bottom: 0, left: 0 },
   };
@@ -70,17 +71,48 @@
     });
   }
 
-  // The reference's own raw dimensions minus the edited crop amounts — this is the fixed
-  // output size every card gets center-cropped to, so all exports end up the same size.
-  function currentCropTargetSize() {
-    const ref = getReference() || state.cards[0];
-    if (!ref) return null;
-    const rw = ref.img.naturalWidth || ref.img.width;
-    const rh = ref.img.naturalHeight || ref.img.height;
-    return {
-      w: Math.max(1, rw - state.crop.left - state.crop.right),
-      h: Math.max(1, rh - state.crop.top - state.crop.bottom),
-    };
+  const OFFSET_CORR_MAX_DIM = 300; // downscale target for position-alignment search (speed; shift is scaled back up to full res)
+
+  function canvasGray(canvas) {
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    const w = canvas.width, h = canvas.height;
+    const data = ctx.getImageData(0, 0, w, h).data;
+    const gray = new Float64Array(w * h);
+    for (let i = 0, n = w * h; i < n; i++) {
+      const o = i * 4;
+      gray[i] = 0.299 * data[o] + 0.587 * data[o + 1] + 0.114 * data[o + 2];
+    }
+    return { gray, w, h };
+  }
+
+  // Finds, per card, the pixel shift (in that card's own full-resolution post-scale space)
+  // that best lines its printed content up with the reference's. Must run after rotation and
+  // scale are already known (computeAutoScales) — this only corrects leftover translation, on
+  // top of an already-leveled, already-matched-size render, using Offset.computeOffset on a
+  // downscaled grayscale rendering of each (uncropped, rotated, scaled) card.
+  function computeAutoOffsets() {
+    const ref = getReference();
+    if (!ref) {
+      state.cards.forEach((c) => (c.autoOffset = { dx: 0, dy: 0 }));
+      return;
+    }
+    const baseOptions = { ...currentOptions(), colorEnabled: false, autoPositionEnabled: false, crop: null };
+
+    const refCanvas = Render.renderCard(ref, baseOptions, OFFSET_CORR_MAX_DIM);
+    const { gray: refGray, w: refW, h: refH } = canvasGray(refCanvas);
+    ref.autoOffset = { dx: 0, dy: 0 };
+
+    state.cards.forEach((card) => {
+      if (card.id === ref.id) return;
+      const cardCanvas = Render.renderCard(card, baseOptions, OFFSET_CORR_MAX_DIM);
+      const cardPreviewScale = previewScaleFor(card, baseOptions, OFFSET_CORR_MAX_DIM);
+      const { gray: cardGray, w: cardW, h: cardH } = canvasGray(cardCanvas);
+      const { dx, dy } = Offset.computeOffset(refGray, refW, refH, cardGray, cardW, cardH);
+      // dx/dy come back in this low-res render's pixel space — convert to the card's own
+      // full-resolution (post-scale) pixel space so render.js can rescale it consistently
+      // for any output size, the same way autoAngle/autoScale already are.
+      card.autoOffset = { dx: dx / cardPreviewScale, dy: dy / cardPreviewScale };
+    });
   }
 
   function currentOptions() {
@@ -93,7 +125,8 @@
       manualRotationDeg: state.manualRotationDeg,
       perCardRotationDeg: state.perCardRotationDeg,
       autoScaleEnabled: state.autoScaleEnabled,
-      cropTargetSize: currentCropTargetSize(),
+      autoPositionEnabled: state.autoPositionEnabled,
+      crop: state.crop,
     };
   }
 
@@ -162,9 +195,10 @@
         state.referenceId = card.id;
         renderGallery();
         recomputeAutoColorIfNeeded();
-        if (state.rotationEnabled && state.autoScaleEnabled) {
+        if (state.autoScaleEnabled || state.autoPositionEnabled) {
           state.cards.forEach((c) => ensureAnalyzed(c));
-          computeAutoScales();
+          if (state.autoScaleEnabled) computeAutoScales();
+          if (state.autoPositionEnabled) computeAutoOffsets();
         }
         refreshAll();
       });
@@ -215,6 +249,8 @@
     const hasTwo = state.cards.length > 0;
     el('autoColorBtn').disabled = !hasTwo;
     el('autoRotateBtn').disabled = !hasTwo;
+    el('autoScaleBtn').disabled = !hasTwo;
+    el('autoPositionBtn').disabled = !hasTwo;
     el('suggestCropBtn').disabled = !hasTwo;
     el('downloadOneBtn').disabled = !has;
     el('downloadAllBtn').disabled = !has;
@@ -291,19 +327,22 @@
   });
 
   // ---------- Rotation controls ----------
+  // Rotation, scale, and position are independent alignment stages, each with its own
+  // detect button and enable toggle — you can run them in any order, or skip one entirely.
+  // They still compose in a fixed pipeline order at render time (see render.js): scale is
+  // baked into the working-resolution draw, then rotation, then position, then crop — scale
+  // first keeps angle/position math in normalized units, and position runs last (right
+  // before crop) since it's measured against whatever rotation is currently applied and
+  // should correct whatever drift that rotation leaves behind, not get undone by it.
 
   el('autoRotateBtn').addEventListener('click', () => {
     state.cards.forEach((card) => ensureAnalyzed(card));
     state.rotationEnabled = true;
     state.autoAngleEnabled = true;
-    state.autoScaleEnabled = true;
     el('rotationEnabled').checked = true;
     el('rotationEnabled').disabled = false;
     el('autoAngleEnabled').checked = true;
     el('autoAngleEnabled').disabled = false;
-    el('autoScaleEnabled').checked = true;
-    el('autoScaleEnabled').disabled = false;
-    computeAutoScales();
     autoSuggestCrop();
     refreshAll();
   });
@@ -314,10 +353,6 @@
   });
   el('autoAngleEnabled').addEventListener('change', (e) => {
     state.autoAngleEnabled = e.target.checked;
-    refreshAll();
-  });
-  el('autoScaleEnabled').addEventListener('change', (e) => {
-    state.autoScaleEnabled = e.target.checked;
     refreshAll();
   });
 
@@ -347,6 +382,40 @@
     refreshAll();
   });
 
+  // ---------- Scale controls ----------
+
+  el('autoScaleBtn').addEventListener('click', () => {
+    state.cards.forEach((card) => ensureAnalyzed(card));
+    state.autoScaleEnabled = true;
+    el('autoScaleEnabled').checked = true;
+    el('autoScaleEnabled').disabled = false;
+    computeAutoScales();
+    autoSuggestCrop();
+    refreshAll();
+  });
+
+  el('autoScaleEnabled').addEventListener('change', (e) => {
+    state.autoScaleEnabled = e.target.checked;
+    refreshAll();
+  });
+
+  // ---------- Position controls ----------
+
+  el('autoPositionBtn').addEventListener('click', () => {
+    state.cards.forEach((card) => ensureAnalyzed(card));
+    state.autoPositionEnabled = true;
+    el('autoPositionEnabled').checked = true;
+    el('autoPositionEnabled').disabled = false;
+    computeAutoOffsets();
+    autoSuggestCrop();
+    refreshAll();
+  });
+
+  el('autoPositionEnabled').addEventListener('change', (e) => {
+    state.autoPositionEnabled = e.target.checked;
+    refreshAll();
+  });
+
   // ---------- Crop controls ----------
 
   function currentMaxAbsAngle() {
@@ -360,13 +429,39 @@
     return max;
   }
 
+  // Worst case across all 4 edges: the rotation-derived margin (same on both sides of an
+  // axis, since different cards can skew in either direction) plus, per edge, the largest
+  // position-alignment shift that would leave that specific edge with a blank margin. A
+  // card shifted right (positive dx) exposes blank on its LEFT; shifted left exposes blank
+  // on its RIGHT; same logic for dy/top/bottom. Taking the max per edge across all cards
+  // (rather than a single combined pixel budget split evenly) keeps the crop anchored and
+  // no larger than it needs to be on each side.
   function autoSuggestCrop() {
     const ref = getReference() || state.cards[0];
     if (!ref) return;
     const w = ref.img.naturalWidth || ref.img.width;
     const h = ref.img.naturalHeight || ref.img.height;
     const maxAngle = currentMaxAbsAngle();
-    const crop = Render.suggestedCrop(w, h, maxAngle);
+    const rot = Render.suggestedCrop(w, h, maxAngle);
+
+    let extraLeft = 0, extraRight = 0, extraTop = 0, extraBottom = 0;
+    if (state.autoPositionEnabled) {
+      state.cards.forEach((card) => {
+        const off = card.autoOffset;
+        if (!off) return;
+        extraLeft = Math.max(extraLeft, off.dx);
+        extraRight = Math.max(extraRight, -off.dx);
+        extraTop = Math.max(extraTop, off.dy);
+        extraBottom = Math.max(extraBottom, -off.dy);
+      });
+    }
+
+    const crop = {
+      top: Math.ceil(rot.top + extraTop),
+      bottom: Math.ceil(rot.bottom + extraBottom),
+      left: Math.ceil(rot.left + extraLeft),
+      right: Math.ceil(rot.right + extraRight),
+    };
     state.crop = crop;
     el('cropTop').value = crop.top;
     el('cropBottom').value = crop.bottom;
@@ -450,25 +545,30 @@
     const finalCanvas = Render.renderCard(card, currentOptions(), PREVIEW_MAX_DIM);
     copyCanvas(afterCanvas, finalCanvas);
 
-    // Guide: rotated but uncropped, with red crop overlay
-    const showGuide = state.rotationEnabled && el('showCropGuide').checked;
+    // Guide: rotated/positioned but uncropped, with red crop overlay. The overlay rectangle
+    // is drawn at the crop's actual anchored (left, top) offset — not re-centered — so it
+    // doubles as a check that this card's content really did land where the reference's did;
+    // if a card still has residual position drift, the rectangle will visibly miss its icons.
+    const showGuide = (state.rotationEnabled || state.autoScaleEnabled || state.autoPositionEnabled) && el('showCropGuide').checked;
     guideRow.style.display = showGuide ? '' : 'none';
     if (showGuide) {
       const options = currentOptions();
-      const uncroppedOptions = { ...options, cropTargetSize: null };
+      const uncroppedOptions = { ...options, crop: null };
       const uncropped = Render.renderCard(card, uncroppedOptions, PREVIEW_MAX_DIM);
       copyCanvas(guideCanvas, uncropped);
       const gctx = guideCanvas.getContext('2d');
       const previewScale = previewScaleFor(card, options, PREVIEW_MAX_DIM);
-      const targetSize = options.cropTargetSize;
-      const targetW = targetSize ? Math.min(uncropped.width, Math.round(targetSize.w * previewScale)) : uncropped.width;
-      const targetH = targetSize ? Math.min(uncropped.height, Math.round(targetSize.h * previewScale)) : uncropped.height;
-      const left = Math.round((uncropped.width - targetW) / 2);
-      const top = Math.round((uncropped.height - targetH) / 2);
+      const crop = options.crop;
+      const left = crop ? Math.round(crop.left * previewScale) : 0;
+      const top = crop ? Math.round(crop.top * previewScale) : 0;
+      const right = crop ? Math.round(crop.right * previewScale) : 0;
+      const bottom = crop ? Math.round(crop.bottom * previewScale) : 0;
+      const rectW = Math.max(1, uncropped.width - left - right);
+      const rectH = Math.max(1, uncropped.height - top - bottom);
       gctx.strokeStyle = '#dc2626';
       gctx.lineWidth = 2;
       gctx.setLineDash([6, 4]);
-      gctx.strokeRect(left, top, targetW, targetH);
+      gctx.strokeRect(left, top, rectW, rectH);
     }
   }
 
