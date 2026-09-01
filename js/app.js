@@ -178,6 +178,7 @@
     el('suggestCropBtn').disabled = !hasTwo;
     el('downloadOneBtn').disabled = !has;
     el('downloadAllBtn').disabled = !has;
+    el('downloadAllZipBtn').disabled = !has;
   }
 
   // ---------- Color controls ----------
@@ -458,6 +459,29 @@
     return format === 'image/jpeg' ? 'jpg' : 'png';
   }
 
+  function canvasToBytes(canvas, format) {
+    return new Promise((resolve) => {
+      canvas.toBlob(
+        (blob) => {
+          blob.arrayBuffer().then((buf) => resolve(new Uint8Array(buf)));
+        },
+        format,
+        0.95
+      );
+    });
+  }
+
+  function uniqueZipName(name, used) {
+    let candidate = name;
+    let n = 2;
+    while (used.has(candidate)) {
+      candidate = name.replace(/(\.[^.]+)$/, `_${n}$1`);
+      n++;
+    }
+    used.add(candidate);
+    return candidate;
+  }
+
   el('downloadOneBtn').addEventListener('click', async () => {
     const card = getSelected();
     if (!card) return;
@@ -480,6 +504,36 @@
       await new Promise((r) => setTimeout(r, 250)); // avoid browser blocking rapid-fire downloads
     }
     exportStatus.textContent = `Done — exported ${state.cards.length} card(s).`;
+    btn.disabled = false;
+  });
+
+  el('downloadAllZipBtn').addEventListener('click', async () => {
+    const format = el('exportFormat').value;
+    const ext = extForFormat(format);
+    const btn = el('downloadAllZipBtn');
+    btn.disabled = true;
+    const used = new Set();
+    const files = [];
+    for (let i = 0; i < state.cards.length; i++) {
+      const card = state.cards[i];
+      exportStatus.textContent = `Preparing ZIP ${i + 1} / ${state.cards.length}: ${card.name}...`;
+      const canvas = Render.renderCard(card, currentOptions(), null);
+      const bytes = await canvasToBytes(canvas, format);
+      const baseName = card.name.replace(/\.[^.]+$/, '');
+      const name = uniqueZipName(`${baseName}_aligned.${ext}`, used);
+      files.push({ name, data: bytes });
+    }
+    exportStatus.textContent = `Building ZIP archive...`;
+    const zipBlob = Zip.createZip(files);
+    const url = URL.createObjectURL(zipBlob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'aligned_cards.zip';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 4000);
+    exportStatus.textContent = `Done — zipped ${state.cards.length} card(s).`;
     btn.disabled = false;
   });
 
