@@ -18,6 +18,7 @@
     autoPositionEnabled: true,
 
     crop: { top: 0, right: 0, bottom: 0, left: 0 },
+    emptyPixelMode: 'crop', // 'crop' trims the margins away; 'fill' extends interior edge pixels into them instead
   };
 
   const el = (id) => document.getElementById(id);
@@ -127,6 +128,7 @@
       autoScaleEnabled: state.autoScaleEnabled,
       autoPositionEnabled: state.autoPositionEnabled,
       crop: state.crop,
+      emptyPixelMode: state.emptyPixelMode,
     };
   }
 
@@ -488,6 +490,14 @@
   });
 
   el('showCropGuide').addEventListener('change', () => updatePreview());
+
+  document.getElementsByName('emptyPixelMode').forEach((radio) => {
+    radio.addEventListener('change', () => {
+      if (!radio.checked) return;
+      state.emptyPixelMode = radio.value;
+      refreshAll();
+    });
+  });
 
   // ---------- Preview ----------
 

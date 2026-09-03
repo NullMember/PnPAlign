@@ -14,7 +14,9 @@ const Render = (() => {
   // card: { img, autoColorTransform, autoAngle, autoScale, autoOffset }
   // options: { colorEnabled, manualColor, rotationEnabled, autoAngleEnabled, manualRotationDeg, perCardRotationDeg,
   //            autoScaleEnabled, autoPositionEnabled, crop:{top,right,bottom,left} (pixel amounts to trim,
-  //            in the reference card's full-resolution pixels, anchored at that exact offset on every card) }
+  //            in the reference card's full-resolution pixels, anchored at that exact offset on every card),
+  //            emptyPixelMode: 'crop' | 'fill' (fill extends interior edge pixels into the crop
+  //            margins instead of trimming them away, keeping every card the same output size) }
   function renderCard(card, options, maxDim) {
     const img = card.img;
     const naturalW = img.naturalWidth || img.width;
@@ -92,27 +94,37 @@ const Render = (() => {
     // normalizes the printed content's size, not any background margin around it, so a card
     // that needed a lot of scale-down correction can still end up with less canvas to spare
     // than the reference; that card's final size will be smaller than the rest as a result.
-    let cw = w, ch = h, left = 0, top = 0;
-    if (options.crop) {
-      const cropLeft = Math.round(options.crop.left * previewScale);
-      const cropTop = Math.round(options.crop.top * previewScale);
-      const cropRight = Math.round(options.crop.right * previewScale);
-      const cropBottom = Math.round(options.crop.bottom * previewScale);
-      left = cropLeft;
-      top = cropTop;
-      cw = Math.max(1, w - cropLeft - cropRight);
-      ch = Math.max(1, h - cropTop - cropBottom);
-      if (left + cw > w) left = Math.max(0, w - cw);
-      if (top + ch > h) top = Math.max(0, h - ch);
-      cw = Math.min(cw, w - left);
-      ch = Math.min(ch, h - top);
-    }
-    if (cw !== w || ch !== h || left !== 0 || top !== 0) {
-      const cropped = document.createElement('canvas');
-      cropped.width = cw;
-      cropped.height = ch;
-      cropped.getContext('2d').drawImage(canvas, left, top, cw, ch, 0, 0, cw, ch);
-      canvas = cropped;
+    if (options.crop && options.emptyPixelMode === 'fill') {
+      const margins = {
+        left: Math.round(options.crop.left * previewScale),
+        top: Math.round(options.crop.top * previewScale),
+        right: Math.round(options.crop.right * previewScale),
+        bottom: Math.round(options.crop.bottom * previewScale),
+      };
+      canvas = Fill.fillMargins(canvas, margins);
+    } else {
+      let cw = w, ch = h, left = 0, top = 0;
+      if (options.crop) {
+        const cropLeft = Math.round(options.crop.left * previewScale);
+        const cropTop = Math.round(options.crop.top * previewScale);
+        const cropRight = Math.round(options.crop.right * previewScale);
+        const cropBottom = Math.round(options.crop.bottom * previewScale);
+        left = cropLeft;
+        top = cropTop;
+        cw = Math.max(1, w - cropLeft - cropRight);
+        ch = Math.max(1, h - cropTop - cropBottom);
+        if (left + cw > w) left = Math.max(0, w - cw);
+        if (top + ch > h) top = Math.max(0, h - ch);
+        cw = Math.min(cw, w - left);
+        ch = Math.min(ch, h - top);
+      }
+      if (cw !== w || ch !== h || left !== 0 || top !== 0) {
+        const cropped = document.createElement('canvas');
+        cropped.width = cw;
+        cropped.height = ch;
+        cropped.getContext('2d').drawImage(canvas, left, top, cw, ch, 0, 0, cw, ch);
+        canvas = cropped;
+      }
     }
 
     return canvas;

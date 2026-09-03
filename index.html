@@ -112,6 +112,11 @@
     <section class="panel">
       <h2>6. Crop (stabilization trim)</h2>
       <p class="hint">Rotating leaves ragged/empty edges, and position alignment can leave a blank margin on whichever edge a card was shifted away from. These pixel amounts are trimmed from each side — auto-suggested per edge from the worst case across all cards (rotation angle + position shift); edit freely. Unlike earlier versions, the crop window is anchored at these exact offsets on every card (not re-centered), since position alignment already lines every card up to the same frame.</p>
+      <div class="field-row">
+        <label><input type="radio" name="emptyPixelMode" id="emptyPixelModeCrop" value="crop" checked /> Crop (remove edges)</label>
+        <label><input type="radio" name="emptyPixelMode" id="emptyPixelModeFill" value="fill" /> Fill (extend edges)</label>
+      </div>
+      <p class="hint">Fill keeps every card the same output size by extending the surviving interior's edge pixels outward into these margins instead of cutting them off — useful when you want a consistent canvas size without losing content near the edge.</p>
       <button id="suggestCropBtn" class="btn">Auto-Suggest Crop</button>
       <div class="crop-grid">
         <div></div>
@@ -180,6 +185,7 @@
 <script src="js/analyze.js"></script>
 <script src="js/offset.js"></script>
 <script src="js/color.js"></script>
+<script src="js/fill.js"></script>
 <script src="js/render.js"></script>
 <script src="js/app.js"></script>
 </body>
