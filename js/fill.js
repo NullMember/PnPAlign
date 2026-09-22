@@ -1,7 +1,4 @@
-// Fills a canvas's outer margins by extending its interior edge pixels outward, instead of
-// cropping them away. Same per-row/per-column edge-extension + corner-blend technique as
-// PnPBleed's addBleedToCard (github.com/NullMember/PnPBleed), adapted to overwrite existing
-// margin pixels in place rather than growing the canvas.
+// Fills a canvas's outer margins by extending interior edge pixels outward instead of cropping.
 
 const Fill = (() => {
   function mixColors(from, to, t) {

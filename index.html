@@ -7,36 +7,35 @@
 <link rel="stylesheet" href="css/style.css" />
 </head>
 <body>
-<header class="app-header">
+<div class="container">
+
+<header>
   <h1>PnPScan Card Aligner</h1>
-  <p class="subtitle">Batch color &amp; rotation alignment for scanned/photographed cards — runs entirely in your browser, nothing is uploaded.</p>
+  <p class="subtitle">Batch color, rotation, scale, and position alignment for scanned or photographed cards.</p>
 </header>
 
-<div class="app-layout">
+<div class="content with-gallery">
   <aside class="sidebar">
 
     <section class="panel">
-      <h2>1. Load Cards</h2>
+      <h3 class="panel-title">1. Load Cards <span class="help" tabindex="0" data-tip="Click a thumbnail to preview it. Click ★ on a thumbnail to set it as the reference card — its color and rotation become the target for all others.">?</span></h3>
       <div id="dropzone" class="dropzone">
-        <p>Drag &amp; drop card images here, or</p>
-        <label class="btn file-btn">
-          Choose Files
-          <input type="file" id="fileInput" accept="image/*" multiple hidden />
-        </label>
+        <div class="dz-title">Drag &amp; drop card images here</div>
+        <div>or click to browse</div>
+        <input type="file" id="fileInput" accept="image/*" multiple hidden />
       </div>
-      <p class="hint">Click a thumbnail to preview it. Click the ★ on a thumbnail to make it the <strong>reference</strong> card (its color and level rotation are the target for all others).</p>
     </section>
 
     <section class="panel">
-      <h2>2. Color Alignment</h2>
-      <button id="autoColorBtn" class="btn primary" disabled>Auto Color Align to Reference</button>
-      <div class="field-row">
-        <label><input type="checkbox" id="colorEnabled" checked disabled /> Apply color edits</label>
+      <h3 class="panel-title">2. Color Alignment <span class="help" tabindex="0" data-tip="Run Auto Color Align once to enable the toggles below it — after that you can switch the auto match or manual sliders on/off independently.">?</span></h3>
+      <button id="autoColorBtn" class="btn-primary" disabled>Auto Color Align to Reference</button>
+      <div class="control-group">
+        <label class="inline"><input type="checkbox" id="colorEnabled" checked disabled /> Apply color edits</label>
       </div>
-      <div class="field-row">
-        <label><input type="checkbox" id="autoColorEnabled" checked disabled /> Include auto alignment</label>
+      <div class="control-group">
+        <label class="inline"><input type="checkbox" id="autoColorEnabled" checked disabled /> Include auto alignment</label>
       </div>
-      <h3>Manual batch adjustment</h3>
+      <h4>Manual batch adjustment</h4>
       <div class="slider-field">
         <label for="brightness">Brightness</label>
         <input type="range" id="brightness" min="-100" max="100" value="0" />
@@ -67,57 +66,53 @@
         <input type="range" id="bGain" min="0.5" max="1.5" step="0.01" value="1" />
         <output id="bGainOut">1.00</output>
       </div>
-      <button id="resetColorBtn" class="btn small">Reset Manual Color</button>
+      <button id="resetColorBtn" class="btn-secondary btn-small">Reset Manual Color</button>
     </section>
 
     <section class="panel">
-      <h2>3. Rotation Alignment</h2>
-      <button id="autoRotateBtn" class="btn primary" disabled>Auto Detect &amp; Level Rotation</button>
-      <div class="field-row">
-        <label><input type="checkbox" id="rotationEnabled" checked disabled /> Apply rotation edits</label>
+      <h3 class="panel-title">3. Rotation Alignment <span class="help" tabindex="0" data-tip="Run Auto Detect once to enable the toggles below it — after that you can switch auto leveling or the manual offset on/off independently.">?</span></h3>
+      <button id="autoRotateBtn" class="btn-primary" disabled>Auto Detect &amp; Level Rotation</button>
+      <div class="control-group">
+        <label class="inline"><input type="checkbox" id="rotationEnabled" checked disabled /> Apply rotation edits</label>
       </div>
-      <div class="field-row">
-        <label><input type="checkbox" id="autoAngleEnabled" checked disabled /> Include auto leveling</label>
+      <div class="control-group">
+        <label class="inline"><input type="checkbox" id="autoAngleEnabled" checked disabled /> Include auto leveling</label>
       </div>
       <div class="slider-field">
         <label for="manualRotation">Batch rotation offset (°)</label>
         <input type="range" id="manualRotation" min="-10" max="10" step="0.1" value="0" />
         <output id="manualRotationOut">0.0</output>
       </div>
-      <div class="field-row">
+      <div class="control-group">
         <label for="perCardRotation">Fine-tune selected card (°)</label>
         <input type="number" id="perCardRotation" step="0.1" value="0" style="width:5em" />
       </div>
-      <button id="resetRotationBtn" class="btn small">Reset Manual Rotation</button>
+      <button id="resetRotationBtn" class="btn-secondary btn-small">Reset Manual Rotation</button>
     </section>
 
     <section class="panel">
-      <h2>4. Scale Alignment</h2>
-      <button id="autoScaleBtn" class="btn primary" disabled>Auto Detect &amp; Match Scale</button>
-      <div class="field-row">
-        <label><input type="checkbox" id="autoScaleEnabled" checked disabled /> Apply auto scale match</label>
+      <h3 class="panel-title">4. Scale Alignment <span class="help" tabindex="0" data-tip="Resizes each card so its printed content matches the reference's physical size — corrects a different scan zoom/DPI. Independent of rotation/position; can run in any order.">?</span></h3>
+      <button id="autoScaleBtn" class="btn-primary" disabled>Auto Detect &amp; Match Scale</button>
+      <div class="control-group">
+        <label class="inline"><input type="checkbox" id="autoScaleEnabled" checked disabled /> Apply auto scale match</label>
       </div>
-      <p class="hint">Resizes each card so its printed content matches the reference's physical size — corrects scans taken at a slightly different zoom/DPI. Independent of rotation/position; can run in any order.</p>
     </section>
 
     <section class="panel">
-      <h2>5. Position Alignment</h2>
-      <button id="autoPositionBtn" class="btn primary" disabled>Auto Detect &amp; Match Position</button>
-      <div class="field-row">
-        <label><input type="checkbox" id="autoPositionEnabled" checked disabled /> Apply auto position match</label>
+      <h3 class="panel-title">5. Position Alignment <span class="help" tabindex="0" data-tip="Shifts each card so its printed content lines up with the reference's. Most accurate after rotation and scale are detected first, but works standalone too.">?</span></h3>
+      <button id="autoPositionBtn" class="btn-primary" disabled>Auto Detect &amp; Match Position</button>
+      <div class="control-group">
+        <label class="inline"><input type="checkbox" id="autoPositionEnabled" checked disabled /> Apply auto position match</label>
       </div>
-      <p class="hint">Shifts each card so its printed content lines up with the reference's, correcting for the card sitting in a slightly different spot in each scan frame. Most accurate after rotation and scale are detected first (it measures leftover drift on top of whatever's currently applied), but works standalone too.</p>
     </section>
 
     <section class="panel">
-      <h2>6. Crop (stabilization trim)</h2>
-      <p class="hint">Rotating leaves ragged/empty edges, and position alignment can leave a blank margin on whichever edge a card was shifted away from. These pixel amounts are trimmed from each side — auto-suggested per edge from the worst case across all cards (rotation angle + position shift); edit freely. Unlike earlier versions, the crop window is anchored at these exact offsets on every card (not re-centered), since position alignment already lines every card up to the same frame.</p>
-      <div class="field-row">
+      <h3 class="panel-title">6. Crop (stabilization trim) <span class="help" tabindex="0" data-tip="Rotation and position alignment can leave ragged edges or a blank margin. These pixel amounts are trimmed (or, with Fill, extended instead of cut) from each side — auto-suggested per edge, editable freely.">?</span></h3>
+      <div class="radio-group">
         <label><input type="radio" name="emptyPixelMode" id="emptyPixelModeCrop" value="crop" checked /> Crop (remove edges)</label>
         <label><input type="radio" name="emptyPixelMode" id="emptyPixelModeFill" value="fill" /> Fill (extend edges)</label>
       </div>
-      <p class="hint">Fill keeps every card the same output size by extending the surviving interior's edge pixels outward into these margins instead of cutting them off — useful when you want a consistent canvas size without losing content near the edge.</p>
-      <button id="suggestCropBtn" class="btn">Auto-Suggest Crop</button>
+      <button id="suggestCropBtn" class="btn-secondary">Auto-Suggest Crop</button>
       <div class="crop-grid">
         <div></div>
         <div class="crop-field"><label for="cropTop">Top</label><input type="number" id="cropTop" min="0" value="0" /></div>
@@ -132,52 +127,56 @@
     </section>
 
     <section class="panel">
-      <h2>7. Export</h2>
-      <div class="field-row">
+      <h3 class="panel-title">7. Export</h3>
+      <div class="control-group">
         <label for="exportFormat">Format</label>
         <select id="exportFormat">
           <option value="image/png">PNG</option>
           <option value="image/jpeg">JPEG</option>
         </select>
       </div>
-      <button id="downloadOneBtn" class="btn" disabled>Download Selected Card</button>
-      <button id="downloadAllZipBtn" class="btn primary" disabled>Download All as ZIP</button>
-      <button id="downloadAllBtn" class="btn" disabled>Download All (Separate Files)</button>
-      <p class="hint" id="exportStatus"></p>
+      <div class="button-group">
+        <button id="downloadOneBtn" class="btn-secondary" disabled>Download Selected Card</button>
+        <button id="downloadAllZipBtn" class="btn-primary" disabled>Download All as ZIP</button>
+        <button id="downloadAllBtn" class="btn-secondary" disabled>Download All (Separate Files)</button>
+      </div>
+      <p class="status" id="exportStatus"></p>
     </section>
 
   </aside>
 
-  <main class="main-area">
+  <main class="main">
     <section class="preview-section">
-      <h2>Preview: <span id="previewName" class="muted">— select a card —</span></h2>
-      <div class="preview-row">
-        <div class="preview-col">
-          <h3>Reference <span class="muted">(target)</span></h3>
-          <canvas id="referenceCanvas"></canvas>
+      <h3 class="preview-title">Preview: <span id="previewName" class="input-hint">— select a card —</span></h3>
+      <div class="comparison-container cols-3">
+        <div class="comparison-item">
+          <div class="comparison-label">Reference <span class="input-hint">(target)</span></div>
+          <div class="preview-canvas-container"><canvas id="referenceCanvas"></canvas></div>
         </div>
-        <div class="preview-col">
-          <h3>Before</h3>
-          <canvas id="beforeCanvas"></canvas>
+        <div class="comparison-item">
+          <div class="comparison-label">Before</div>
+          <div class="preview-canvas-container"><canvas id="beforeCanvas"></canvas></div>
         </div>
-        <div class="preview-col">
-          <h3>After</h3>
-          <canvas id="afterCanvas"></canvas>
+        <div class="comparison-item">
+          <div class="comparison-label">After</div>
+          <div class="preview-canvas-container"><canvas id="afterCanvas"></canvas></div>
         </div>
       </div>
-      <div class="preview-row" id="guideRow">
-        <div class="preview-col wide">
-          <h3>Rotation &amp; Crop Guide <span class="muted">(red = pixels removed)</span></h3>
-          <canvas id="guideCanvas"></canvas>
+      <div class="comparison-container cols-1" id="guideRow">
+        <div class="comparison-item">
+          <div class="comparison-label">Rotation &amp; Crop Guide <span class="input-hint">(red = pixels removed)</span></div>
+          <div class="preview-canvas-container"><canvas id="guideCanvas"></canvas></div>
         </div>
       </div>
     </section>
   </main>
 
   <aside class="gallery-sidebar">
-    <h2>Cards <span id="cardCount" class="muted"></span></h2>
+    <h3 class="gallery-title">Cards <span id="cardCount" class="input-hint"></span></h3>
     <div id="gallery" class="gallery"></div>
   </aside>
+</div>
+
 </div>
 
 <script src="js/geometry.js"></script>

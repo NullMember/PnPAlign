@@ -1,8 +1,5 @@
-// Translation (position) alignment: finds the pixel shift that best lines up one card's
-// content with the reference's, via a coarse-to-fine brute-force search over grayscale
-// mean-absolute-difference. Pure/DOM-free (also module.exports'ed for Node testing), like
-// geometry.js — the caller supplies grayscale buffers already rendered at matching
-// rotation/scale, this just finds the (dx, dy) that overlaps them best.
+// Position alignment: coarse-to-fine search for the pixel shift that best overlaps two
+// grayscale buffers (mean-absolute-difference). Pure/DOM-free, like geometry.js.
 
 const Offset = (() => {
   // Crops `gray` (srcW x srcH) to a centered w x h window.
@@ -20,11 +17,8 @@ const Offset = (() => {
     return out;
   }
 
-  // Mean absolute difference between `ref` and `card` (both w x h) when card is shifted by
-  // (dx, dy): card pixel (x - dx, y - dy) is compared against ref pixel (x, y). Only the
-  // overlapping region is scored, normalized by its pixel count so a smaller overlap (larger
-  // shift) doesn't get an unfair advantage; overlaps under 20% of the frame are rejected as
-  // too unreliable to trust (near-empty overlaps can accidentally score very low).
+  // Mean absolute diff over the overlapping region when card is shifted by (dx, dy);
+  // rejects overlaps under 20% of the frame as too unreliable to trust.
   function scoreAt(ref, w, h, card, dx, dy) {
     const xStart = Math.max(0, dx), xEnd = Math.min(w, w + dx);
     const yStart = Math.max(0, dy), yEnd = Math.min(h, h + dy);
@@ -53,11 +47,8 @@ const Offset = (() => {
     return best;
   }
 
-  // refGray/cardGray: flat grayscale buffers, refW*refH / cardW*cardH long.
-  // maxShiftFrac: max shift to search for, as a fraction of the (shorter) shared dimension —
-  // cards should already be close after rotation+scale correction, so this only needs to
-  // cover leftover framing drift, not arbitrary repositioning.
-  // Returns { dx, dy }: the shift to draw `card` at so its content lines up with `ref`.
+  // maxShiftFrac: max shift to search, as a fraction of the shorter shared dimension.
+  // Returns { dx, dy }: the shift to draw `card` at so it lines up with `ref`.
   function computeOffset(refGray, refW, refH, cardGray, cardW, cardH, maxShiftFrac = 0.12) {
     const w = Math.min(refW, cardW);
     const h = Math.min(refH, cardH);

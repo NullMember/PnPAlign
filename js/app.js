@@ -86,11 +86,7 @@
     return { gray, w, h };
   }
 
-  // Finds, per card, the pixel shift (in that card's own full-resolution post-scale space)
-  // that best lines its printed content up with the reference's. Must run after rotation and
-  // scale are already known (computeAutoScales) — this only corrects leftover translation, on
-  // top of an already-leveled, already-matched-size render, using Offset.computeOffset on a
-  // downscaled grayscale rendering of each (uncropped, rotated, scaled) card.
+  // Per-card pixel shift to line content up with the reference. Must run after rotation/scale.
   function computeAutoOffsets() {
     const ref = getReference();
     if (!ref) {
@@ -158,9 +154,17 @@
     });
   }
 
-  el('fileInput').addEventListener('change', (e) => loadFiles(e.target.files));
+  const fileInput = el('fileInput');
+  fileInput.addEventListener('change', (e) => loadFiles(e.target.files));
 
   const dropzone = el('dropzone');
+  dropzone.addEventListener('click', (e) => {
+    // Avoid double-triggering the picker when the click originated on
+    // the (hidden) file input itself.
+    if (e.target === fileInput) return;
+    fileInput.click();
+  });
+  fileInput.addEventListener('click', (e) => e.stopPropagation());
   ['dragenter', 'dragover'].forEach((evt) =>
     dropzone.addEventListener(evt, (e) => {
       e.preventDefault();
@@ -329,13 +333,8 @@
   });
 
   // ---------- Rotation controls ----------
-  // Rotation, scale, and position are independent alignment stages, each with its own
-  // detect button and enable toggle — you can run them in any order, or skip one entirely.
-  // They still compose in a fixed pipeline order at render time (see render.js): scale is
-  // baked into the working-resolution draw, then rotation, then position, then crop — scale
-  // first keeps angle/position math in normalized units, and position runs last (right
-  // before crop) since it's measured against whatever rotation is currently applied and
-  // should correct whatever drift that rotation leaves behind, not get undone by it.
+  // Rotation/scale/position can each run independently, but always compose at render time
+  // (render.js) in fixed order: scale, then rotation, then position, then crop.
 
   el('autoRotateBtn').addEventListener('click', () => {
     state.cards.forEach((card) => ensureAnalyzed(card));
@@ -555,10 +554,8 @@
     const finalCanvas = Render.renderCard(card, currentOptions(), PREVIEW_MAX_DIM);
     copyCanvas(afterCanvas, finalCanvas);
 
-    // Guide: rotated/positioned but uncropped, with red crop overlay. The overlay rectangle
-    // is drawn at the crop's actual anchored (left, top) offset — not re-centered — so it
-    // doubles as a check that this card's content really did land where the reference's did;
-    // if a card still has residual position drift, the rectangle will visibly miss its icons.
+    // Guide: rotated/positioned but uncropped, with a red overlay at the crop's actual
+    // anchored offset — a residual drift shows up as the rectangle missing the icons.
     const showGuide = (state.rotationEnabled || state.autoScaleEnabled || state.autoPositionEnabled) && el('showCropGuide').checked;
     guideRow.style.display = showGuide ? '' : 'none';
     if (showGuide) {

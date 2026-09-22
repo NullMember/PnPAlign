@@ -1,15 +1,10 @@
-// Card analysis: foreground/background separation, skew angle detection,
-// physical card size (for scale matching), and color white-point —
-// all derived from one downscaled render of the card.
+// Card analysis: silhouette/angle/size detection + paper color, from one downscaled render.
 
 const Analyze = (() => {
   const ANALYZE_MAX_DIM = 500; // downscale target for analysis (speed; angle/size/color are scale-invariant)
   const PAPER_SATURATION_PERCENTILE = 0.35; // fraction of least-saturated pixels treated as the card's own paper/background tone
 
-  // Mean RGB of the least-saturated pixels within [xMin,xMax)x[yMin,yMax) of `data` (w wide).
-  // Paper/background tone is near-neutral (low saturation); printed icons/artwork are the
-  // saturated colors we want to exclude. Picking by saturation rather than brightness or an
-  // overall mean keeps this stable regardless of how much colored content a given card has.
+  // Mean RGB of the least-saturated pixels in the box — paper is near-neutral, printed content isn't.
   function estimatePaperColor(data, w, xMin, xMax, yMin, yMax) {
     const idx = [];
     const sat = [];
@@ -139,13 +134,8 @@ const Analyze = (() => {
 
     let angle = 0;
     let cardSize = null;
-    // Bounding box of the detected foreground silhouette. The threshold/border test above
-    // separates the card's printed content (icons, text) from whatever is brighter/darker
-    // around it — on many cards that's the surrounding scan background, but if the card's
-    // own paper is similar in tone to that background, it ends up tracing just the darker
-    // printed content instead. Either way this box sits safely *inside* the true card, so
-    // it's used below as a safe region to sample paper color from without risking picking
-    // up the actual surrounding background.
+    // Bounding box of the foreground silhouette — sits safely inside the card, so it's a
+    // safe region to sample paper color from without picking up the surrounding background.
     let box = null;
     if (points.length >= 3 && useMask) {
       let minX = w, maxX = 0, minY = h, maxY = 0;
@@ -161,19 +151,14 @@ const Analyze = (() => {
       const rectAngleDeg = (rect.angle * 180) / Math.PI;
       const normalized = Geometry.normalizeAngleDeg(rectAngleDeg);
       angle = -normalized; // rotate image by this much to level the card
-      // Full-resolution physical size of the detected card rectangle, ordered so
-      // comparisons between cards don't depend on which hull edge was picked as "width".
+      // Full-resolution size, long/short so it's independent of which edge is "width".
       const long = Math.max(rect.width, rect.height) / scale;
       const short = Math.min(rect.width, rect.height) / scale;
       if (long > 0 && short > 0) cardSize = { long, short };
     }
 
-    // Color white point: mean of the least-saturated pixels within the safe interior box
-    // (or the whole image if no reliable box was found) — see estimatePaperColor above.
-    // The box is inset a further 15% on each side: it's an axis-aligned box around a
-    // (possibly rotated) card, so its corners can dip outside the actual printed content
-    // when the card is skewed, picking up near-neutral background there that would
-    // otherwise contaminate the paper-color estimate.
+    // Paper color from the interior box, inset 15% further since it's axis-aligned around a
+    // possibly-rotated card and its corners can dip outside the printed content when skewed.
     let paper;
     if (box) {
       const bw = box.maxX - box.minX, bh = box.maxY - box.minY;

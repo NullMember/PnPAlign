@@ -10,21 +10,14 @@ const Render = (() => {
     return { top: tb, bottom: tb, left: lr, right: lr };
   }
 
-  // Renders one card at the given output max-dimension. Returns a canvas.
+  // Renders one card at the given output max-dimension: color -> rotate -> position -> crop/fill.
   // card: { img, autoColorTransform, autoAngle, autoScale, autoOffset }
-  // options: { colorEnabled, manualColor, rotationEnabled, autoAngleEnabled, manualRotationDeg, perCardRotationDeg,
-  //            autoScaleEnabled, autoPositionEnabled, crop:{top,right,bottom,left} (pixel amounts to trim,
-  //            in the reference card's full-resolution pixels, anchored at that exact offset on every card),
-  //            emptyPixelMode: 'crop' | 'fill' (fill extends interior edge pixels into the crop
-  //            margins instead of trimming them away, keeping every card the same output size) }
   function renderCard(card, options, maxDim) {
     const img = card.img;
     const naturalW = img.naturalWidth || img.width;
     const naturalH = img.naturalHeight || img.height;
 
-    // cardScale resamples this card so its printed content is the same physical pixel
-    // size as the reference's — otherwise a card scanned at a slightly different zoom/DPI
-    // ends up a different size than everyone else even after rotation+crop line up their edges.
+    // Resample so printed content matches the reference's physical pixel size.
     const cardScale = options.autoScaleEnabled && card.autoScale ? card.autoScale : 1;
     const targetW = naturalW * cardScale;
     const targetH = naturalH * cardScale;
@@ -68,10 +61,8 @@ const Render = (() => {
       ctx = rctx;
     }
 
-    // Step 4: position (translation) alignment. Rotation/scale line up the card's size and
-    // skew, but the printed content can still sit in a different spot within the frame from
-    // scan to scan; this shifts the card so its content lands where the reference's does, so
-    // the anchored crop below (step 5) removes the same content on every card.
+    // Step 4: position — shifts content to land where the reference's does, so the
+    // anchored crop below (step 5) removes the same content on every card.
     if (options.autoPositionEnabled && card.autoOffset) {
       const dx = Math.round(card.autoOffset.dx * previewScale);
       const dy = Math.round(card.autoOffset.dy * previewScale);
@@ -84,16 +75,9 @@ const Render = (() => {
       }
     }
 
-    // Step 5: crop, anchored at an explicit (left, top) offset rather than re-centered. Once
-    // position alignment (step 4) has already lined every card's content up with the
-    // reference's, the same absolute pixel amounts should come off the same edges on every
-    // card — a center-crop would instead remove equal amounts from opposite edges regardless
-    // of which edge position-alignment actually left a blank margin on, wasting real content
-    // to reach the same safety margin. Falls back to clamping (not re-centering) if a card's
-    // own working canvas is smaller than the crop window calls for — cardScale only
-    // normalizes the printed content's size, not any background margin around it, so a card
-    // that needed a lot of scale-down correction can still end up with less canvas to spare
-    // than the reference; that card's final size will be smaller than the rest as a result.
+    // Step 5: crop, anchored at an explicit (left, top) offset rather than re-centered — since
+    // step 4 already lined content up, the same pixel amounts should come off the same edges
+    // on every card. Clamps (doesn't re-center) if a card's canvas is smaller than the window.
     if (options.crop && options.emptyPixelMode === 'fill') {
       const margins = {
         left: Math.round(options.crop.left * previewScale),
