@@ -1,8 +1,10 @@
 /* ==========================================================================
    PnPTools shared UI — canonical stylesheet
-   Same file is used (verbatim) across PnPBleed, PnPAlign, PnPBooklet,
-   PnPCardCrop and PnPLayout so every tool looks and behaves identically.
-   Visual reference: PnPBooklet's original dark app-chrome design.
+   This file (css/style.css in the hub) is copied verbatim into every tool
+   by scripts/sync-shared.sh. Tool-specific rules live in each tool's
+   css/tool.css. Edit only the hub copy.
+   Themes: dark by default; light when the OS prefers it (unless the user
+   picked dark) or when <html data-theme="light"> is set.
    ========================================================================== */
 
 @import url('https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;600;700&display=swap');
@@ -22,8 +24,53 @@
     --success: #51cf66;
     --info: #6c8cff;
     --warning: #ffcc66;
+    --checker: #2e3344;
+    --overlay: rgba(15, 17, 23, 0.85);
+    --shadow: rgba(0, 0, 0, 0.45);
     --radius: 10px;
     --radius-lg: 10px;
+}
+
+@media (prefers-color-scheme: light) {
+    :root:not([data-theme="dark"]) {
+        color-scheme: light;
+        --bg: #f3f4f8;
+        --surface: #ffffff;
+        --surface2: #eceef5;
+        --border: #d6d9e4;
+        --accent: #3f5fe8;
+        --accent-hover: #2d4bd0;
+        --text: #1b1f2b;
+        --text-dim: #585e74;
+        --text-muted: #585e74;
+        --danger: #d6334a;
+        --success: #2b8a3e;
+        --info: #3f5fe8;
+        --warning: #a8670a;
+        --checker: #dcdfe8;
+        --overlay: rgba(243, 244, 248, 0.88);
+        --shadow: rgba(30, 36, 60, 0.14);
+    }
+}
+
+:root[data-theme="light"] {
+    color-scheme: light;
+    --bg: #f3f4f8;
+    --surface: #ffffff;
+    --surface2: #eceef5;
+    --border: #d6d9e4;
+    --accent: #3f5fe8;
+    --accent-hover: #2d4bd0;
+    --text: #1b1f2b;
+    --text-dim: #585e74;
+    --text-muted: #585e74;
+    --danger: #d6334a;
+    --success: #2b8a3e;
+    --info: #3f5fe8;
+    --warning: #a8670a;
+    --checker: #dcdfe8;
+    --overlay: rgba(243, 244, 248, 0.88);
+    --shadow: rgba(30, 36, 60, 0.14);
 }
 
 * {
@@ -197,7 +244,7 @@ header .subtitle {
     line-height: 1.4;
     text-align: left;
     white-space: normal;
-    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.5);
+    box-shadow: 0 8px 20px var(--shadow);
     opacity: 0;
     visibility: hidden;
     transition: opacity 0.15s;
@@ -524,13 +571,13 @@ button:disabled,
     max-width: 100%;
     max-height: 100%;
     border-radius: 4px;
-    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
+    box-shadow: 0 4px 24px var(--shadow);
     background:
-        linear-gradient(45deg, #2e3344 25%, transparent 25%),
-        linear-gradient(-45deg, #2e3344 25%, transparent 25%),
-        linear-gradient(45deg, transparent 75%, #2e3344 75%),
-        linear-gradient(-45deg, transparent 75%, #2e3344 75%);
-    background-color: #1a1d27;
+        linear-gradient(45deg, var(--checker) 25%, transparent 25%),
+        linear-gradient(-45deg, var(--checker) 25%, transparent 25%),
+        linear-gradient(45deg, transparent 75%, var(--checker) 75%),
+        linear-gradient(-45deg, transparent 75%, var(--checker) 75%);
+    background-color: var(--surface);
     background-size: 16px 16px;
     background-position: 0 0, 0 8px, 8px -8px, -8px 0;
 }
@@ -746,7 +793,7 @@ button:disabled,
 .loading-overlay {
     position: fixed;
     inset: 0;
-    background: rgba(15, 17, 23, 0.85);
+    background: var(--overlay);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -838,119 +885,4 @@ button:disabled,
     header h1 { font-size: 1.2rem; }
     .main { padding: 16px; }
     .sidebar, .gallery-sidebar { padding: 16px; }
-}
-
-/* ==========================================================================
-   PnPAlign-only additions
-   Small set of additive rules for pieces that have no equivalent in the
-   shared vocabulary above. Kept minimal and visually consistent with the
-   dark theme (accent blue, same border/radius language).
-   ========================================================================== */
-
-/* Reference/Before/After/Guide preview strip: a 3-up (and 1-up for the guide
-   row) variant of .comparison-container, which only ships a fixed 2-column
-   layout. Everything else (.comparison-item, .comparison-label,
-   .preview-canvas-container's checkerboard canvas background) is reused as-is. */
-.comparison-container.cols-3 { grid-template-columns: repeat(3, 1fr); }
-.comparison-container.cols-1 { grid-template-columns: 1fr; }
-
-/* Crop offset (top/left/right/bottom) 3x3 grid — no equivalent numeric-grid
-   component in the shared vocabulary. */
-.crop-grid {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: 8px;
-}
-
-.crop-field {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-}
-
-.crop-field label {
-    font-size: 12px;
-    color: var(--text-dim);
-}
-
-/* Card gallery thumbnails (rendered dynamically by js/app.js renderGallery()).
-   The shared .thumbnail component is a bare square image tile; PnPAlign's
-   cards additionally need a name caption plus reference-star/remove-x corner
-   buttons, so it's extended here rather than reused directly. Classes
-   card-thumb/selected/reference/ref-star/remove-x/thumb-name are all applied
-   by JS at runtime — do not rename them. */
-.card-thumb {
-    position: relative;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 4px;
-    padding: 8px;
-    border: 2px solid var(--border);
-    border-radius: var(--radius);
-    background: var(--surface2);
-    cursor: pointer;
-    transition: all 0.2s;
-}
-
-.card-thumb:hover {
-    border-color: var(--accent);
-}
-
-.card-thumb.selected {
-    border-color: var(--accent);
-}
-
-.card-thumb.reference {
-    border-color: var(--warning);
-}
-
-.card-thumb img {
-    width: 100%;
-    height: 90px;
-    object-fit: contain;
-    background: var(--surface2);
-    border-radius: 4px;
-}
-
-.card-thumb .thumb-name {
-    width: 100%;
-    font-size: 11px;
-    color: var(--text-dim);
-    text-align: center;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.card-thumb .ref-star,
-.card-thumb .remove-x {
-    position: absolute;
-    top: 4px;
-    width: 20px;
-    height: 20px;
-    line-height: 18px;
-    text-align: center;
-    font-size: 12px;
-    border-radius: 50%;
-    background: var(--surface);
-    border: 1px solid var(--border);
-    cursor: pointer;
-    color: var(--text);
-}
-
-.card-thumb .ref-star {
-    left: 4px;
-    color: var(--warning);
-}
-
-.card-thumb .remove-x {
-    right: 4px;
-    color: var(--danger);
-}
-
-.card-thumb.reference .ref-star {
-    background: var(--warning);
-    color: #111111;
-    border-color: transparent;
 }

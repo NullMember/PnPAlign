@@ -52,6 +52,47 @@
     card.analyzed = true;
   }
 
+  // ---------- Progress for long batch steps ----------
+
+  const progressEl = el('progress');
+  function showProgress(label, done, total) {
+    progressEl.hidden = false;
+    progressEl.querySelector('.progress-label').textContent = `${label} ${done} / ${total}`;
+    progressEl.querySelector('.progress-bar').style.width = `${total ? (done / total) * 100 : 0}%`;
+  }
+  function hideProgress() {
+    progressEl.hidden = true;
+  }
+  const nextFrame = () => new Promise((r) => setTimeout(r, 0));
+
+  // Analyse every card, yielding between cards so the page stays responsive.
+  async function analyzeAll() {
+    const todo = state.cards.filter((c) => !c.analyzed);
+    for (let i = 0; i < todo.length; i++) {
+      showProgress('Analyzing cards', i, todo.length);
+      await nextFrame();
+      ensureAnalyzed(todo[i]);
+    }
+    hideProgress();
+  }
+
+  // Runs one auto step with its buttons disabled and a progress bar shown.
+  let autoBusy = false;
+  async function runAuto(step) {
+    if (autoBusy) return;
+    autoBusy = true;
+    const ids = ['autoColorBtn', 'autoRotateBtn', 'autoScaleBtn', 'autoPositionBtn'];
+    ids.forEach((id) => (el(id).disabled = true));
+    try {
+      await analyzeAll();
+      await step();
+    } finally {
+      hideProgress();
+      autoBusy = false;
+      updateButtonsEnabled();
+    }
+  }
+
   // Scale each card so its printed content matches the reference's physical size —
   // otherwise cards scanned at a slightly different zoom/DPI stay a different size
   // than everyone else even after rotation and crop line their edges up.
@@ -101,16 +142,37 @@
 
     state.cards.forEach((card) => {
       if (card.id === ref.id) return;
-      const cardCanvas = Render.renderCard(card, baseOptions, OFFSET_CORR_MAX_DIM);
-      const cardPreviewScale = previewScaleFor(card, baseOptions, OFFSET_CORR_MAX_DIM);
-      const { gray: cardGray, w: cardW, h: cardH } = canvasGray(cardCanvas);
-      const { dx, dy } = Offset.computeOffset(refGray, refW, refH, cardGray, cardW, cardH);
-      // dx/dy come back in this low-res render's pixel space — convert to the card's own
-      // full-resolution (post-scale) pixel space so render.js can rescale it consistently
-      // for any output size, the same way autoAngle/autoScale already are.
-      card.autoOffset = { dx: dx / cardPreviewScale, dy: dy / cardPreviewScale };
+      computeOffsetFor(card, baseOptions, refGray, refW, refH);
     });
   }
+
+  // Same as computeAutoOffsets, but yields between cards and shows progress.
+  async function computeAutoOffsetsAsync() {
+    const ref = getReference();
+    if (!ref) return computeAutoOffsets();
+    const baseOptions = { ...currentOptions(), colorEnabled: false, autoPositionEnabled: false, crop: null };
+    const refCanvas = Render.renderCard(ref, baseOptions, OFFSET_CORR_MAX_DIM);
+    const { gray: refGray, w: refW, h: refH } = canvasGray(refCanvas);
+    ref.autoOffset = { dx: 0, dy: 0 };
+    const others = state.cards.filter((c) => c.id !== ref.id);
+    for (let i = 0; i < others.length; i++) {
+      showProgress('Matching positions', i, others.length);
+      await nextFrame();
+      computeOffsetFor(others[i], baseOptions, refGray, refW, refH);
+    }
+  }
+
+  function computeOffsetFor(card, baseOptions, refGray, refW, refH) {
+    const cardCanvas = Render.renderCard(card, baseOptions, OFFSET_CORR_MAX_DIM);
+    const cardPreviewScale = previewScaleFor(card, baseOptions, OFFSET_CORR_MAX_DIM);
+    const { gray: cardGray, w: cardW, h: cardH } = canvasGray(cardCanvas);
+    const { dx, dy } = Offset.computeOffset(refGray, refW, refH, cardGray, cardW, cardH);
+    // dx/dy come back in this low-res render's pixel space — convert to the card's own
+    // full-resolution (post-scale) pixel space so render.js can rescale it consistently
+    // for any output size, the same way autoAngle/autoScale already are.
+    card.autoOffset = { dx: dx / cardPreviewScale, dy: dy / cardPreviewScale };
+  }
+
 
   function currentOptions() {
     return {
@@ -130,27 +192,32 @@
 
   // ---------- File loading ----------
 
+  // Adds cards in file order; resolves once every image has loaded.
   function loadFiles(fileList) {
     const files = Array.from(fileList).filter((f) => f.type.startsWith('image/'));
-    let remaining = files.length;
-    files.forEach((file) => {
-      const url = URL.createObjectURL(file);
+    const loads = files.map((file) => new Promise((resolve) => {
       const img = new Image();
-      img.onload = () => {
+      img.onload = () => resolve({ file, img });
+      img.onerror = () => resolve(null);
+      img.src = URL.createObjectURL(file);
+    }));
+    return Promise.all(loads).then((results) => {
+      results.filter(Boolean).forEach(({ file, img }) => {
         const card = {
           id: state.nextId++,
           name: file.name,
+          file, // kept for project saving
+          role: file.pnpRole, // front/back from a hand-off, passed on when sending
           img,
           analyzed: false,
         };
         state.cards.push(card);
         if (state.referenceId === null) state.referenceId = card.id;
         if (state.selectedId === null) state.selectedId = card.id;
-        renderGallery();
-        updateButtonsEnabled();
-        if (state.selectedId === card.id) updatePreview();
-      };
-      img.src = url;
+      });
+      renderGallery();
+      updateButtonsEnabled();
+      updatePreview();
     });
   }
 
@@ -253,19 +320,19 @@
   function updateButtonsEnabled() {
     const has = state.cards.length > 0;
     const hasTwo = state.cards.length > 0;
-    el('autoColorBtn').disabled = !hasTwo;
-    el('autoRotateBtn').disabled = !hasTwo;
-    el('autoScaleBtn').disabled = !hasTwo;
-    el('autoPositionBtn').disabled = !hasTwo;
+    el('autoColorBtn').disabled = !hasTwo || autoBusy;
+    el('autoRotateBtn').disabled = !hasTwo || autoBusy;
+    el('autoScaleBtn').disabled = !hasTwo || autoBusy;
+    el('autoPositionBtn').disabled = !hasTwo || autoBusy;
     el('suggestCropBtn').disabled = !hasTwo;
     el('downloadOneBtn').disabled = !has;
-    el('downloadAllBtn').disabled = !has;
     el('downloadAllZipBtn').disabled = !has;
+    sendMenu.setEnabled(has);
   }
 
   // ---------- Color controls ----------
 
-  el('autoColorBtn').addEventListener('click', () => {
+  const autoColor = () => runAuto(async () => {
     const ref = getReference();
     if (!ref) return;
     ensureAnalyzed(ref);
@@ -281,6 +348,7 @@
     el('autoColorEnabled').disabled = false;
     refreshAll();
   });
+  el('autoColorBtn').addEventListener('click', autoColor);
 
   function recomputeAutoColorIfNeeded() {
     if (!state.colorEnabled || !state.autoColorEnabled) return;
@@ -336,8 +404,7 @@
   // Rotation/scale/position can each run independently, but always compose at render time
   // (render.js) in fixed order: scale, then rotation, then position, then crop.
 
-  el('autoRotateBtn').addEventListener('click', () => {
-    state.cards.forEach((card) => ensureAnalyzed(card));
+  const autoRotate = () => runAuto(async () => {
     state.rotationEnabled = true;
     state.autoAngleEnabled = true;
     el('rotationEnabled').checked = true;
@@ -347,6 +414,7 @@
     autoSuggestCrop();
     refreshAll();
   });
+  el('autoRotateBtn').addEventListener('click', autoRotate);
 
   el('rotationEnabled').addEventListener('change', (e) => {
     state.rotationEnabled = e.target.checked;
@@ -385,8 +453,7 @@
 
   // ---------- Scale controls ----------
 
-  el('autoScaleBtn').addEventListener('click', () => {
-    state.cards.forEach((card) => ensureAnalyzed(card));
+  const autoScale = () => runAuto(async () => {
     state.autoScaleEnabled = true;
     el('autoScaleEnabled').checked = true;
     el('autoScaleEnabled').disabled = false;
@@ -394,6 +461,7 @@
     autoSuggestCrop();
     refreshAll();
   });
+  el('autoScaleBtn').addEventListener('click', autoScale);
 
   el('autoScaleEnabled').addEventListener('change', (e) => {
     state.autoScaleEnabled = e.target.checked;
@@ -402,15 +470,15 @@
 
   // ---------- Position controls ----------
 
-  el('autoPositionBtn').addEventListener('click', () => {
-    state.cards.forEach((card) => ensureAnalyzed(card));
+  const autoPosition = () => runAuto(async () => {
     state.autoPositionEnabled = true;
     el('autoPositionEnabled').checked = true;
     el('autoPositionEnabled').disabled = false;
-    computeAutoOffsets();
+    await computeAutoOffsetsAsync();
     autoSuggestCrop();
     refreshAll();
   });
+  el('autoPositionBtn').addEventListener('click', autoPosition);
 
   el('autoPositionEnabled').addEventListener('change', (e) => {
     state.autoPositionEnabled = e.target.checked;
@@ -489,6 +557,77 @@
   });
 
   el('showCropGuide').addEventListener('change', () => updatePreview());
+
+  // Drag the dashed crop rectangle's edges on the guide canvas.
+  const CROP_IDS = { left: 'cropLeft', right: 'cropRight', top: 'cropTop', bottom: 'cropBottom' };
+  let cropDrag = null;
+
+  function guideGeometry(e) {
+    const card = getSelected();
+    if (!card || !guideCanvas.width) return null;
+    const rect = guideCanvas.getBoundingClientRect();
+    const k = guideCanvas.width / rect.width; // canvas px per screen px
+    const scale = previewScaleFor(card, currentOptions(), PREVIEW_MAX_DIM); // canvas px per card px
+    const crop = state.crop || { top: 0, right: 0, bottom: 0, left: 0 };
+    return {
+      x: (e.clientX - rect.left) * k,
+      y: (e.clientY - rect.top) * k,
+      k,
+      scale,
+      edges: {
+        left: crop.left * scale,
+        right: guideCanvas.width - crop.right * scale,
+        top: crop.top * scale,
+        bottom: guideCanvas.height - crop.bottom * scale,
+      },
+    };
+  }
+
+  function edgeUnder(g) {
+    const tol = 8 * g.k;
+    const inY = g.y > g.edges.top - tol && g.y < g.edges.bottom + tol;
+    const inX = g.x > g.edges.left - tol && g.x < g.edges.right + tol;
+    if (inY && Math.abs(g.x - g.edges.left) < tol) return 'left';
+    if (inY && Math.abs(g.x - g.edges.right) < tol) return 'right';
+    if (inX && Math.abs(g.y - g.edges.top) < tol) return 'top';
+    if (inX && Math.abs(g.y - g.edges.bottom) < tol) return 'bottom';
+    return null;
+  }
+
+  guideCanvas.addEventListener('pointerdown', (e) => {
+    const g = guideGeometry(e);
+    const edge = g && edgeUnder(g);
+    if (!edge) return;
+    cropDrag = edge;
+    guideCanvas.setPointerCapture(e.pointerId);
+  });
+
+  guideCanvas.addEventListener('pointermove', (e) => {
+    const g = guideGeometry(e);
+    if (!g) return;
+    if (!cropDrag) {
+      const edge = edgeUnder(g);
+      guideCanvas.style.cursor = edge === 'left' || edge === 'right' ? 'ew-resize' : edge ? 'ns-resize' : '';
+      return;
+    }
+    const distance = {
+      left: g.x,
+      right: guideCanvas.width - g.x,
+      top: g.y,
+      bottom: guideCanvas.height - g.y,
+    }[cropDrag];
+    const input = el(CROP_IDS[cropDrag]);
+    input.value = Math.max(0, Math.round(distance / g.scale));
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+
+  const endCropDrag = () => {
+    if (!cropDrag) return;
+    el(CROP_IDS[cropDrag]).dispatchEvent(new Event('change', { bubbles: true }));
+    cropDrag = null;
+  };
+  guideCanvas.addEventListener('pointerup', endCropDrag);
+  guideCanvas.addEventListener('pointercancel', endCropDrag);
 
   document.getElementsByName('emptyPixelMode').forEach((radio) => {
     radio.addEventListener('change', () => {
@@ -651,22 +790,6 @@
     await downloadCanvas(canvas, `${baseName}_aligned.${extForFormat(format)}`, format);
   });
 
-  el('downloadAllBtn').addEventListener('click', async () => {
-    const format = el('exportFormat').value;
-    const btn = el('downloadAllBtn');
-    btn.disabled = true;
-    for (let i = 0; i < state.cards.length; i++) {
-      const card = state.cards[i];
-      exportStatus.textContent = `Exporting ${i + 1} / ${state.cards.length}: ${card.name}...`;
-      const canvas = Render.renderCard(card, currentOptions(), null);
-      const baseName = card.name.replace(/\.[^.]+$/, '');
-      await downloadCanvas(canvas, `${baseName}_aligned.${extForFormat(format)}`, format);
-      await new Promise((r) => setTimeout(r, 250)); // avoid browser blocking rapid-fire downloads
-    }
-    exportStatus.textContent = `Done — exported ${state.cards.length} card(s).`;
-    btn.disabled = false;
-  });
-
   el('downloadAllZipBtn').addEventListener('click', async () => {
     const format = el('exportFormat').value;
     const ext = extForFormat(format);
@@ -696,6 +819,83 @@
     exportStatus.textContent = `Done — zipped ${state.cards.length} card(s).`;
     btn.disabled = false;
   });
+
+  // ---------- Shared PnPTools wiring ----------
+
+  PnP.importButton(el('importSlot'), (files) => loadFiles(files));
+
+  const sendMenu = PnP.sendMenu(el('sendSlot'), {
+    from: 'Align',
+    targets: ['PnPBleed', 'PnPLayout', 'PnPBooklet', 'PnPTuckBox'],
+    getItems: async () => {
+      const format = el('exportFormat').value;
+      const ext = extForFormat(format);
+      const items = [];
+      for (const card of state.cards) {
+        const canvas = Render.renderCard(card, currentOptions(), null);
+        const blob = await PnP.canvasToBlob(canvas, format, 0.95);
+        items.push({ name: `${card.name.replace(/\.[^.]+$/, '')}_aligned.${ext}`, blob, role: card.role });
+      }
+      return items;
+    },
+  });
+
+  // Auto steps are replayed (in the order they were run) when a project is
+  // opened, which recreates their results exactly without storing them.
+  const AUTO_BUTTONS = ['autoRotateBtn', 'autoScaleBtn', 'autoPositionBtn', 'autoColorBtn'];
+  const AUTO_ACTIONS = { autoRotateBtn: autoRotate, autoScaleBtn: autoScale, autoPositionBtn: autoPosition, autoColorBtn: autoColor };
+  let autoRuns = [];
+  AUTO_BUTTONS.forEach((id) => el(id).addEventListener('click', () => {
+    autoRuns = autoRuns.filter((x) => x !== id).concat(id);
+  }));
+
+  function resetCards() {
+    state.cards = [];
+    state.referenceId = null;
+    state.selectedId = null;
+    state.perCardRotationDeg = {};
+    autoRuns = [];
+  }
+
+  PnP.init({
+    tool: 'PnPAlign',
+    project: {
+      getFiles: () => state.cards.map((c) => ({ name: c.name, blob: c.file, role: c.role })),
+      getState: () => {
+        const index = (id) => state.cards.findIndex((c) => c.id === id);
+        return {
+          referenceIndex: index(state.referenceId),
+          perCardRotationDeg: state.cards.map((c) => state.perCardRotationDeg[c.id] || 0),
+          autoRuns,
+        };
+      },
+      setFiles: async (files) => {
+        resetCards();
+        await loadFiles(files);
+      },
+      setState: async (saved, manifest) => {
+        if (!saved) return;
+        const ref = state.cards[saved.referenceIndex];
+        if (ref) state.referenceId = ref.id;
+        (saved.perCardRotationDeg || []).forEach((deg, i) => {
+          if (state.cards[i] && deg) state.perCardRotationDeg[state.cards[i].id] = deg;
+        });
+        for (const id of saved.autoRuns || []) {
+          if (AUTO_ACTIONS[id]) {
+            await AUTO_ACTIONS[id]();
+            autoRuns = autoRuns.filter((x) => x !== id).concat(id);
+          }
+        }
+        // Replaying the auto steps resets toggles and crop; restore the saved ones.
+        PnP.settings.apply(manifest.settings);
+        renderGallery();
+        refreshAll();
+      },
+    },
+    hasUnsavedWork: () => state.cards.length > 0,
+  });
+
+  PnP.handoff.receive((items) => loadFiles(PnP.itemsToFiles(items)));
 
   updateButtonsEnabled();
 })();

@@ -5,6 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>PnPScan — Card Color &amp; Rotation Aligner</title>
 <link rel="stylesheet" href="css/style.css" />
+<link rel="stylesheet" href="css/tool.css">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="shared/icon.svg" type="image/svg+xml">
+<meta name="theme-color" content="#1a1d27">
+<script src="shared/pnp-theme.js"></script>
+<link rel="stylesheet" href="shared/pnp-shared.css" />
 </head>
 <body>
 <div class="container">
@@ -24,46 +30,47 @@
         <div>or click to browse</div>
         <input type="file" id="fileInput" accept="image/*" multiple hidden />
       </div>
+      <div id="importSlot"></div>
     </section>
 
     <section class="panel">
       <h3 class="panel-title">2. Color Alignment <span class="help" tabindex="0" data-tip="Run Auto Color Align once to enable the toggles below it — after that you can switch the auto match or manual sliders on/off independently.">?</span></h3>
       <button id="autoColorBtn" class="btn-primary" disabled>Auto Color Align to Reference</button>
       <div class="control-group">
-        <label class="inline"><input type="checkbox" id="colorEnabled" checked disabled /> Apply color edits</label>
+        <label class="inline"><input type="checkbox" id="colorEnabled" data-persist="project" checked disabled /> Apply color edits</label>
       </div>
       <div class="control-group">
-        <label class="inline"><input type="checkbox" id="autoColorEnabled" checked disabled /> Include auto alignment</label>
+        <label class="inline"><input type="checkbox" id="autoColorEnabled" data-persist="project" checked disabled /> Include auto alignment</label>
       </div>
       <h4>Manual batch adjustment</h4>
       <div class="slider-field">
         <label for="brightness">Brightness</label>
-        <input type="range" id="brightness" min="-100" max="100" value="0" />
+        <input type="range" id="brightness" data-persist="project" min="-100" max="100" value="0" />
         <output id="brightnessOut">0</output>
       </div>
       <div class="slider-field">
         <label for="contrast">Contrast</label>
-        <input type="range" id="contrast" min="-100" max="100" value="0" />
+        <input type="range" id="contrast" data-persist="project" min="-100" max="100" value="0" />
         <output id="contrastOut">0</output>
       </div>
       <div class="slider-field">
         <label for="saturation">Saturation</label>
-        <input type="range" id="saturation" min="-100" max="100" value="0" />
+        <input type="range" id="saturation" data-persist="project" min="-100" max="100" value="0" />
         <output id="saturationOut">0</output>
       </div>
       <div class="slider-field">
         <label for="rGain">Red gain</label>
-        <input type="range" id="rGain" min="0.5" max="1.5" step="0.01" value="1" />
+        <input type="range" id="rGain" data-persist="project" min="0.5" max="1.5" step="0.01" value="1" />
         <output id="rGainOut">1.00</output>
       </div>
       <div class="slider-field">
         <label for="gGain">Green gain</label>
-        <input type="range" id="gGain" min="0.5" max="1.5" step="0.01" value="1" />
+        <input type="range" id="gGain" data-persist="project" min="0.5" max="1.5" step="0.01" value="1" />
         <output id="gGainOut">1.00</output>
       </div>
       <div class="slider-field">
         <label for="bGain">Blue gain</label>
-        <input type="range" id="bGain" min="0.5" max="1.5" step="0.01" value="1" />
+        <input type="range" id="bGain" data-persist="project" min="0.5" max="1.5" step="0.01" value="1" />
         <output id="bGainOut">1.00</output>
       </div>
       <button id="resetColorBtn" class="btn-secondary btn-small">Reset Manual Color</button>
@@ -73,19 +80,19 @@
       <h3 class="panel-title">3. Rotation Alignment <span class="help" tabindex="0" data-tip="Run Auto Detect once to enable the toggles below it — after that you can switch auto leveling or the manual offset on/off independently.">?</span></h3>
       <button id="autoRotateBtn" class="btn-primary" disabled>Auto Detect &amp; Level Rotation</button>
       <div class="control-group">
-        <label class="inline"><input type="checkbox" id="rotationEnabled" checked disabled /> Apply rotation edits</label>
+        <label class="inline"><input type="checkbox" id="rotationEnabled" data-persist="project" checked disabled /> Apply rotation edits</label>
       </div>
       <div class="control-group">
-        <label class="inline"><input type="checkbox" id="autoAngleEnabled" checked disabled /> Include auto leveling</label>
+        <label class="inline"><input type="checkbox" id="autoAngleEnabled" data-persist="project" checked disabled /> Include auto leveling</label>
       </div>
       <div class="slider-field">
         <label for="manualRotation">Batch rotation offset (°)</label>
-        <input type="range" id="manualRotation" min="-10" max="10" step="0.1" value="0" />
+        <input type="range" id="manualRotation" data-persist="project" min="-10" max="10" step="0.1" value="0" />
         <output id="manualRotationOut">0.0</output>
       </div>
       <div class="control-group">
         <label for="perCardRotation">Fine-tune selected card (°)</label>
-        <input type="number" id="perCardRotation" step="0.1" value="0" style="width:5em" />
+        <input type="number" id="perCardRotation" data-persist="false" step="0.1" value="0" style="width:5em" />
       </div>
       <button id="resetRotationBtn" class="btn-secondary btn-small">Reset Manual Rotation</button>
     </section>
@@ -94,7 +101,7 @@
       <h3 class="panel-title">4. Scale Alignment <span class="help" tabindex="0" data-tip="Resizes each card so its printed content matches the reference's physical size — corrects a different scan zoom/DPI. Independent of rotation/position; can run in any order.">?</span></h3>
       <button id="autoScaleBtn" class="btn-primary" disabled>Auto Detect &amp; Match Scale</button>
       <div class="control-group">
-        <label class="inline"><input type="checkbox" id="autoScaleEnabled" checked disabled /> Apply auto scale match</label>
+        <label class="inline"><input type="checkbox" id="autoScaleEnabled" data-persist="project" checked disabled /> Apply auto scale match</label>
       </div>
     </section>
 
@@ -102,7 +109,7 @@
       <h3 class="panel-title">5. Position Alignment <span class="help" tabindex="0" data-tip="Shifts each card so its printed content lines up with the reference's. Most accurate after rotation and scale are detected first, but works standalone too.">?</span></h3>
       <button id="autoPositionBtn" class="btn-primary" disabled>Auto Detect &amp; Match Position</button>
       <div class="control-group">
-        <label class="inline"><input type="checkbox" id="autoPositionEnabled" checked disabled /> Apply auto position match</label>
+        <label class="inline"><input type="checkbox" id="autoPositionEnabled" data-persist="project" checked disabled /> Apply auto position match</label>
       </div>
     </section>
 
@@ -115,13 +122,13 @@
       <button id="suggestCropBtn" class="btn-secondary">Auto-Suggest Crop</button>
       <div class="crop-grid">
         <div></div>
-        <div class="crop-field"><label for="cropTop">Top</label><input type="number" id="cropTop" min="0" value="0" /></div>
+        <div class="crop-field"><label for="cropTop">Top</label><input type="number" id="cropTop" data-persist="project" min="0" value="0" /></div>
         <div></div>
-        <div class="crop-field"><label for="cropLeft">Left</label><input type="number" id="cropLeft" min="0" value="0" /></div>
+        <div class="crop-field"><label for="cropLeft">Left</label><input type="number" id="cropLeft" data-persist="project" min="0" value="0" /></div>
         <div class="crop-field"><label><input type="checkbox" id="showCropGuide" checked /> guide</label></div>
-        <div class="crop-field"><label for="cropRight">Right</label><input type="number" id="cropRight" min="0" value="0" /></div>
+        <div class="crop-field"><label for="cropRight">Right</label><input type="number" id="cropRight" data-persist="project" min="0" value="0" /></div>
         <div></div>
-        <div class="crop-field"><label for="cropBottom">Bottom</label><input type="number" id="cropBottom" min="0" value="0" /></div>
+        <div class="crop-field"><label for="cropBottom">Bottom</label><input type="number" id="cropBottom" data-persist="project" min="0" value="0" /></div>
         <div></div>
       </div>
     </section>
@@ -136,11 +143,11 @@
         </select>
       </div>
       <div class="button-group">
-        <button id="downloadOneBtn" class="btn-secondary" disabled>Download Selected Card</button>
-        <button id="downloadAllZipBtn" class="btn-primary" disabled>Download All as ZIP</button>
-        <button id="downloadAllBtn" class="btn-secondary" disabled>Download All (Separate Files)</button>
+        <button id="downloadAllZipBtn" class="btn-primary" disabled>Download all (ZIP)</button>
+        <button id="downloadOneBtn" class="btn-secondary btn-small" disabled>Selected card only</button>
       </div>
       <p class="status" id="exportStatus"></p>
+      <div id="sendSlot"></div>
     </section>
 
   </aside>
@@ -148,6 +155,10 @@
   <main class="main">
     <section class="preview-section">
       <h3 class="preview-title">Preview: <span id="previewName" class="input-hint">— select a card —</span></h3>
+      <div class="progress" id="progress" hidden role="status" aria-live="polite">
+        <div class="progress-track"><div class="progress-bar"></div></div>
+        <span class="progress-label"></span>
+      </div>
       <div class="comparison-container cols-3">
         <div class="comparison-item">
           <div class="comparison-label">Reference <span class="input-hint">(target)</span></div>
@@ -164,7 +175,7 @@
       </div>
       <div class="comparison-container cols-1" id="guideRow">
         <div class="comparison-item">
-          <div class="comparison-label">Rotation &amp; Crop Guide <span class="input-hint">(red = pixels removed)</span></div>
+          <div class="comparison-label">Rotation &amp; Crop Guide <span class="input-hint">(dashed = kept area — drag its edges to adjust the crop)</span></div>
           <div class="preview-canvas-container"><canvas id="guideCanvas"></canvas></div>
         </div>
       </div>
@@ -179,6 +190,7 @@
 
 </div>
 
+<script src="shared/pnp-shared.js"></script>
 <script src="js/geometry.js"></script>
 <script src="js/zip.js"></script>
 <script src="js/analyze.js"></script>
