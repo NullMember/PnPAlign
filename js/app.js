@@ -221,32 +221,7 @@
     });
   }
 
-  const fileInput = el('fileInput');
-  fileInput.addEventListener('change', (e) => loadFiles(e.target.files));
-
-  const dropzone = el('dropzone');
-  dropzone.addEventListener('click', (e) => {
-    // Avoid double-triggering the picker when the click originated on
-    // the (hidden) file input itself.
-    if (e.target === fileInput) return;
-    fileInput.click();
-  });
-  fileInput.addEventListener('click', (e) => e.stopPropagation());
-  ['dragenter', 'dragover'].forEach((evt) =>
-    dropzone.addEventListener(evt, (e) => {
-      e.preventDefault();
-      dropzone.classList.add('dragover');
-    })
-  );
-  ['dragleave', 'drop'].forEach((evt) =>
-    dropzone.addEventListener(evt, (e) => {
-      e.preventDefault();
-      dropzone.classList.remove('dragover');
-    })
-  );
-  dropzone.addEventListener('drop', (e) => {
-    if (e.dataTransfer.files.length) loadFiles(e.dataTransfer.files);
-  });
+  PnP.dropzone(el('dropzone'), { input: el('fileInput'), onFiles: loadFiles });
 
   // ---------- Gallery ----------
 
@@ -738,14 +713,7 @@
     return new Promise((resolve) => {
       canvas.toBlob(
         (blob) => {
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement('a');
-          a.href = url;
-          a.download = filename;
-          document.body.appendChild(a);
-          a.click();
-          document.body.removeChild(a);
-          setTimeout(() => URL.revokeObjectURL(url), 4000);
+          PnP.downloadBlob(blob, filename);
           resolve();
         },
         format,
@@ -808,21 +776,13 @@
     }
     exportStatus.textContent = `Building ZIP archive...`;
     const zipBlob = Zip.createZip(files);
-    const url = URL.createObjectURL(zipBlob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = 'aligned_cards.zip';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    setTimeout(() => URL.revokeObjectURL(url), 4000);
+    PnP.downloadBlob(zipBlob, 'aligned_cards.zip');
     exportStatus.textContent = `Done — zipped ${state.cards.length} card(s).`;
     btn.disabled = false;
   });
 
   // ---------- Shared PnPTools wiring ----------
 
-  PnP.importButton(el('importSlot'), (files) => loadFiles(files));
 
   const sendMenu = PnP.sendMenu(el('sendSlot'), {
     from: 'Align',
