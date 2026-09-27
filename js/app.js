@@ -197,9 +197,10 @@
     const files = Array.from(fileList).filter((f) => f.type.startsWith('image/'));
     const loads = files.map((file) => new Promise((resolve) => {
       const img = new Image();
+      const url = URL.createObjectURL(file);
       img.onload = () => resolve({ file, img });
-      img.onerror = () => resolve(null);
-      img.src = URL.createObjectURL(file);
+      img.onerror = () => { URL.revokeObjectURL(url); resolve(null); };
+      img.src = url;
     }));
     return Promise.all(loads).then((results) => {
       results.filter(Boolean).forEach(({ file, img }) => {
@@ -282,7 +283,14 @@
     });
   }
 
+  // The gallery reuses a card's blob URL for its thumbnail, so it is only
+  // released once the card is gone.
+  function releaseCard(card) {
+    if (card.img.src.startsWith('blob:')) URL.revokeObjectURL(card.img.src);
+  }
+
   function removeCard(id) {
+    state.cards.filter((c) => c.id === id).forEach(releaseCard);
     state.cards = state.cards.filter((c) => c.id !== id);
     delete state.perCardRotationDeg[id];
     if (state.referenceId === id) state.referenceId = state.cards[0]?.id ?? null;
@@ -353,7 +361,7 @@
       const v = isFloat ? parseFloat(input.value) : parseInt(input.value, 10);
       state.manualColor[key] = v;
       out.textContent = formatter ? formatter(v) : v;
-      updatePreview();
+      previewNextFrame();
     });
     input.addEventListener('change', () => refreshThumbnails());
   }
@@ -403,7 +411,7 @@
   el('manualRotation').addEventListener('input', (e) => {
     state.manualRotationDeg = parseFloat(e.target.value);
     el('manualRotationOut').textContent = state.manualRotationDeg.toFixed(1);
-    updatePreview();
+    previewNextFrame();
   });
   el('manualRotation').addEventListener('change', () => {
     refreshThumbnails();
@@ -413,7 +421,7 @@
     const card = getSelected();
     if (!card) return;
     state.perCardRotationDeg[card.id] = parseFloat(e.target.value) || 0;
-    updatePreview();
+    previewNextFrame();
   });
   el('perCardRotation').addEventListener('change', () => refreshThumbnails());
 
@@ -526,7 +534,7 @@
         left: parseInt(el('cropLeft').value, 10) || 0,
         right: parseInt(el('cropRight').value, 10) || 0,
       };
-      updatePreview();
+      previewNextFrame();
     });
     el(id).addEventListener('change', () => refreshThumbnails());
   });
@@ -638,6 +646,16 @@
     const targetW = naturalW * cardScale;
     const targetH = naturalH * cardScale;
     return maxDim ? Math.min(1, maxDim / Math.max(targetW, targetH)) : 1;
+  }
+
+  // Sliders fire far more often than the screen redraws: redraw once per frame.
+  let previewFrame = 0;
+  function previewNextFrame() {
+    if (previewFrame) return;
+    previewFrame = requestAnimationFrame(() => {
+      previewFrame = 0;
+      updatePreview();
+    });
   }
 
   function updatePreview() {
@@ -810,6 +828,7 @@
   }));
 
   function resetCards() {
+    state.cards.forEach(releaseCard);
     state.cards = [];
     state.referenceId = null;
     state.selectedId = null;
