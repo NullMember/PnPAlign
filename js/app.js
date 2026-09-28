@@ -794,7 +794,7 @@
     }
     exportStatus.textContent = `Building ZIP archive...`;
     const zipBlob = Zip.createZip(files);
-    PnP.downloadBlob(zipBlob, 'aligned_cards.zip');
+    PnP.downloadBlob(zipBlob, PnP.outputName(state.cards, 'aligned.zip', 'aligned_cards.zip'));
     exportStatus.textContent = `Done — zipped ${state.cards.length} card(s).`;
     btn.disabled = false;
   });
