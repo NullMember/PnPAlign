@@ -198,18 +198,19 @@
     const loads = files.map((file) => new Promise((resolve) => {
       const img = new Image();
       const url = URL.createObjectURL(file);
-      img.onload = () => resolve({ file, img });
+      img.onload = async () => resolve({ file, img, dpi: await PnP.readImageDpi(file) });
       img.onerror = () => { URL.revokeObjectURL(url); resolve(null); };
       img.src = url;
     }));
     return Promise.all(loads).then((results) => {
-      results.filter(Boolean).forEach(({ file, img }) => {
+      results.filter(Boolean).forEach(({ file, img, dpi }) => {
         const card = {
           id: state.nextId++,
           name: file.name,
           file, // kept for project saving
           role: file.pnpRole, // front/back from a hand-off, passed on when sending
           img,
+          dpi, // from the file, or null
           analyzed: false,
         };
         state.cards.push(card);
@@ -727,34 +728,28 @@
 
   // ---------- Export ----------
 
-  function downloadCanvas(canvas, filename, format) {
-    return new Promise((resolve) => {
-      canvas.toBlob(
-        (blob) => {
-          PnP.downloadBlob(blob, filename);
-          resolve();
-        },
-        format,
-        0.95
-      );
-    });
-  }
-
   function extForFormat(format) {
     return format === 'image/jpeg' ? 'jpg' : 'png';
   }
 
-  function canvasToBytes(canvas, format) {
-    return new Promise((resolve) => {
-      canvas.toBlob(
-        (blob) => {
-          blob.arrayBuffer().then((buf) => resolve(new Uint8Array(buf)));
-        },
-        format,
-        0.95
-      );
-    });
+  // DPI of an aligned card: with auto scale on, cards are resampled to the
+  // reference card's size, so they share its DPI; otherwise their own.
+  function outputDpi(card, options) {
+    const scale = options.autoScaleEnabled && card.autoScale ? card.autoScale : 1;
+    const ref = state.cards.find((c) => c.id === state.referenceId);
+    if (scale !== 1 && ref && ref.dpi) return ref.dpi;
+    return card.dpi ? card.dpi * scale : null;
   }
+
+  // One aligned card at full resolution, stamped with its DPI.
+  async function alignedBlob(card, format) {
+    const options = currentOptions();
+    const canvas = Render.renderCard(card, options, null); // null = full resolution
+    const blob = await PnP.canvasToBlob(canvas, format, 0.95);
+    return PnP.setImageDpi(blob, outputDpi(card, options));
+  }
+
+  const alignedName = (card, format) => `${card.name.replace(/\.[^.]+$/, '')}_aligned.${extForFormat(format)}`;
 
   function uniqueZipName(name, used) {
     let candidate = name;
@@ -771,14 +766,11 @@
     const card = getSelected();
     if (!card) return;
     const format = el('exportFormat').value;
-    const canvas = Render.renderCard(card, currentOptions(), null); // null = full resolution
-    const baseName = card.name.replace(/\.[^.]+$/, '');
-    await downloadCanvas(canvas, `${baseName}_aligned.${extForFormat(format)}`, format);
+    PnP.downloadBlob(await alignedBlob(card, format), alignedName(card, format));
   });
 
   el('downloadAllZipBtn').addEventListener('click', async () => {
     const format = el('exportFormat').value;
-    const ext = extForFormat(format);
     const btn = el('downloadAllZipBtn');
     btn.disabled = true;
     const used = new Set();
@@ -786,14 +778,11 @@
     for (let i = 0; i < state.cards.length; i++) {
       const card = state.cards[i];
       exportStatus.textContent = `Preparing ZIP ${i + 1} / ${state.cards.length}: ${card.name}...`;
-      const canvas = Render.renderCard(card, currentOptions(), null);
-      const bytes = await canvasToBytes(canvas, format);
-      const baseName = card.name.replace(/\.[^.]+$/, '');
-      const name = uniqueZipName(`${baseName}_aligned.${ext}`, used);
-      files.push({ name, data: bytes });
+      const name = uniqueZipName(alignedName(card, format), used);
+      files.push({ name, data: await alignedBlob(card, format) });
     }
     exportStatus.textContent = `Building ZIP archive...`;
-    const zipBlob = Zip.createZip(files);
+    const zipBlob = await PnP.zip.create(files);
     PnP.downloadBlob(zipBlob, PnP.outputName(state.cards, 'aligned.zip', 'aligned_cards.zip'));
     exportStatus.textContent = `Done — zipped ${state.cards.length} card(s).`;
     btn.disabled = false;
@@ -807,12 +796,9 @@
     targets: ['PnPBleed', 'PnPLayout', 'PnPBooklet', 'PnPTuckBox'],
     getItems: async () => {
       const format = el('exportFormat').value;
-      const ext = extForFormat(format);
       const items = [];
       for (const card of state.cards) {
-        const canvas = Render.renderCard(card, currentOptions(), null);
-        const blob = await PnP.canvasToBlob(canvas, format, 0.95);
-        items.push({ name: `${card.name.replace(/\.[^.]+$/, '')}_aligned.${ext}`, blob, role: card.role });
+        items.push({ name: alignedName(card, format), blob: await alignedBlob(card, format), role: card.role });
       }
       return items;
     },
